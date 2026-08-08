@@ -43,6 +43,15 @@ TERMINAL_STATES: frozenset[IncidentState] = frozenset(
 )
 
 
+def initial_state() -> IncidentState:
+    """Return the canonical initial state for new incidents.
+
+    All incident creation MUST call this function rather than
+    referencing IncidentState.RECEIVED directly (AD-19).
+    """
+    return IncidentState.RECEIVED
+
+
 class InvalidTransitionError(Exception):
     """Raised when an invalid state transition is attempted."""
 

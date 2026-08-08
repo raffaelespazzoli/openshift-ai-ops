@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from ..config.logging import Component, get_logger, request_id_var, setup_logging
 from ..db import close_pool
 from .health import router as health_router
+from .webhooks import router as webhooks_router
 
 setup_logging()
 logger = get_logger(Component.API)
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
         return response
 
     app.include_router(health_router)
+    app.include_router(webhooks_router)
 
     return app
 
