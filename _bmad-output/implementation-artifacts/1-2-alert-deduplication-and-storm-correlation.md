@@ -502,9 +502,9 @@ Claude Opus 4.6
 
 ### Review Findings
 
-- [ ] [Review][Patch] Dedup check is race-prone and can still create duplicate incidents for the same fingerprint [`backend/src/api/webhooks.py:46`]
-- [ ] [Review][Patch] Concurrent same-namespace or same-label alerts can split into separate correlation groups instead of one Root-Cause Event [`backend/src/pipeline/correlator.py:174`]
-- [ ] [Review][Patch] Expired groups are only sealed when a later alert triggers processing, so quiet groups can remain open past max age [`backend/src/pipeline/correlator.py:256`]
-- [ ] [Review][Patch] Layer 4 subsystem correlation can attach alerts to groups that should already be sealed [`backend/src/pipeline/correlator.py:128`]
-- [ ] [Review][Patch] Settling windows are not actually Helm-configurable because correlation env vars are never injected into the backend deployment [`charts/openshift-ai-ops/templates/deployment-backend.yaml:27`]
-- [ ] [Review][Patch] Subsystem-correlation evidence does not cite the matched cascade pattern required by AC #4 [`backend/src/pipeline/correlator.py:206`]
+- [x] [Review][Patch] Dedup check is race-prone and can still create duplicate incidents for the same fingerprint [`backend/src/api/webhooks.py:46`] — **Fixed**: Uses `pg_advisory_xact_lock(hash(fingerprint))` inside a transaction before dedup check+insert to serialize per-fingerprint access.
+- [x] [Review][Patch] Concurrent same-namespace or same-label alerts can split into separate correlation groups instead of one Root-Cause Event [`backend/src/pipeline/correlator.py:174`] — **Fixed**: `get_open_groups(conn, for_update=True)` uses `FOR UPDATE` locking on open groups.
+- [x] [Review][Patch] Expired groups are only sealed when a later alert triggers processing, so quiet groups can remain open past max age [`backend/src/pipeline/correlator.py:256`] — **Fixed**: Dedicated `_background_sealing_sweep()` asyncio task runs every `sealing_check_interval_seconds` (default 10s) as a lifespan background task.
+- [x] [Review][Patch] Layer 4 subsystem correlation can attach alerts to groups that should already be sealed [`backend/src/pipeline/correlator.py:128`] — **Fixed**: `_group_exceeds_max_age(group, now)` check skips groups past max age in Layer 4.
+- [x] [Review][Patch] Settling windows are not actually Helm-configurable because correlation env vars are never injected into the backend deployment [`charts/openshift-ai-ops/templates/deployment-backend.yaml:27`] — **Fixed**: All correlation env vars (`CORRELATION_SETTLING_CRITICAL/WARNING/INFO`, `CORRELATION_MAX_AGE_MULTIPLIER`, `CORRELATION_SEALING_INTERVAL`) wired in `deployment-backend.yaml`.
+- [x] [Review][Patch] Subsystem-correlation evidence does not cite the matched cascade pattern required by AC #4 [`backend/src/pipeline/correlator.py:206`] — **Fixed**: Evidence includes `cascade_pattern`, `alert_subsystem`, `group_subsystem` in `dimension_data` with human-readable reasoning string.

@@ -88,10 +88,10 @@ class TestCorrelationGroupLifecycle:
         )
 
         groups = await get_open_groups(db_conn)
-        assert len(groups) == 1
-        assert groups[0]["id"] == group_id
-        assert groups[0]["settling_window_seconds"] == 300
-        assert len(groups[0]["members"]) == 1
+        matched = [g for g in groups if g["id"] == group_id]
+        assert len(matched) == 1
+        assert matched[0]["settling_window_seconds"] == 300
+        assert len(matched[0]["members"]) == 1
 
     @pytest.mark.db
     async def test_add_alert_to_existing_group(self, db_conn):
@@ -111,8 +111,9 @@ class TestCorrelationGroupLifecycle:
         await add_alert_to_group(db_conn, group_id, alert2["id"], inc2["id"], 300, evidence)
 
         groups = await get_open_groups(db_conn)
-        assert len(groups) == 1
-        assert len(groups[0]["members"]) == 2
+        matched = [g for g in groups if g["id"] == group_id]
+        assert len(matched) == 1
+        assert len(matched[0]["members"]) == 2
 
     @pytest.mark.db
     async def test_seal_group_produces_root_cause_event(self, db_conn):

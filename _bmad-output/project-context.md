@@ -250,6 +250,7 @@ Five test layers, each with its own infrastructure and trigger:
 - **Resolved webhook during in-flight pipeline does NOT cancel it.** The freshness gate at execution time catches stale remediations. Diagnostic work is preserved for the Learning Store.
 - **Correlation over-groups by design.** The five-layer correlator (AD-5) prefers false positives. The orchestrator refines during diagnosis. Don't try to make correlation perfect.
 - **Settling windows vary by severity.** Critical=60s, Warning=5min, Info=10min. Timer resets on each new alert joining the group.
+- **Testcontainers requires Podman socket setup on Fedora/RHEL.** The `testcontainers` library defaults to the Docker socket (`/var/run/docker.sock`). On systems using Podman instead of Docker, you must: (1) start the Podman socket with `systemctl --user start podman.socket`, (2) set `DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock`, and (3) set `TESTCONTAINERS_RYUK_DISABLED=true` (Podman does not support Ryuk's privileged container). Without these, integration tests that depend on the `postgres_container` fixture will fail with `DockerException: Error while fetching server API version`. Unit tests (`pytest -m unit`) do not require a container runtime and always work.
 
 ---
 

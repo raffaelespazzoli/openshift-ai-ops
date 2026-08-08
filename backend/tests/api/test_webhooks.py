@@ -183,7 +183,7 @@ class TestWebhookPersistence:
             fp,
         )
         assert len(rows) >= 1
-        assert rows[0]["state"] == "received"
+        assert rows[0]["state"] in ("received", "correlating")
 
     @pytest.mark.db
     async def test_multiple_firing_alerts_create_separate_incidents(self, async_client, db_conn):

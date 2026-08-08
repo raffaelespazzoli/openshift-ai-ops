@@ -166,9 +166,9 @@ so that the most urgent issues are diagnosed first and the queue survives system
 - [x] [Review][Patch] Release or complete active pipeline slots in the current stub dispatch flow [backend/src/pipeline/dispatcher.py:23]
 - [x] [Review][Patch] Queue and transition every incident attached to a sealed multi-incident RCE [backend/src/pipeline/correlator.py:339]
 - [x] [Review][Patch] Wire Helm queue settings into the backend deployment environment [charts/openshift-ai-ops/templates/deployment-backend.yaml:27]
-- [ ] [Review][Patch] Prevent concurrent dequeues from oversubscribing the parallelism cap [backend/src/db/queue.py:61]
-- [ ] [Review][Patch] Evaluate TTL expiry and sibling cancellation at the whole-RCE level, not just the representative incident [backend/src/pipeline/priority_queue.py:147]
-- [ ] [Review][Patch] Reset recovered stale incidents back to `queued` so resolved-webhook cancellation can still reach `cancelled` [backend/src/db/queue.py:204]
+- [x] [Review][Patch] Prevent concurrent dequeues from oversubscribing the parallelism cap [backend/src/db/queue.py:61] — **Fixed**: Single CTE with `pg_advisory_xact_lock(42)` serializes cap check + claim + `FOR UPDATE SKIP LOCKED` atomically.
+- [x] [Review][Patch] Evaluate TTL expiry and sibling cancellation at the whole-RCE level, not just the representative incident [backend/src/pipeline/priority_queue.py:147] — **Fixed**: TTL check uses `get_rce_alert_fingerprints(conn, rce_id)` to verify ALL alerts in the RCE; cancellation uses `get_rce_incident_ids(conn, rce_id)` to cancel all siblings.
+- [x] [Review][Patch] Reset recovered stale incidents back to `queued` so resolved-webhook cancellation can still reach `cancelled` [backend/src/db/queue.py:204] — **Fixed**: `recover_stale_items()` resets all incidents (including siblings via `get_rce_incident_ids`) from `diagnosing` back to `queued`.
 
 ## Dev Notes
 

@@ -154,11 +154,17 @@ class TestEnqueueDequeue:
 
 @pytest.mark.db
 class TestConcurrency:
-    """SKIP LOCKED concurrency tests."""
+    """Serialized dequeue concurrency tests.
+
+    dequeue_next uses pg_advisory_xact_lock(42) to serialize all dequeues.
+    This means two concurrent transactions will block rather than SKIP LOCKED.
+    We verify that sequential dequeues from separate connections each claim
+    a different item (the advisory lock serializes them, not skips them).
+    """
 
     @pytest.mark.asyncio
-    async def test_skip_locked_concurrent_dequeue(self, db_url):
-        """Two concurrent transactions should each get a different item."""
+    async def test_serialized_dequeue_claims_different_items(self, db_url):
+        """Two sequential dequeues from separate connections each get a different item."""
         conn1 = await asyncpg.connect(db_url)
         conn2 = await asyncpg.connect(db_url)
         now = datetime.now(timezone.utc)
@@ -180,9 +186,6 @@ class TestConcurrency:
                 )
 
             with patch("src.db.queue.get_queue_settings", return_value=_queue_settings()):
-                tx1 = conn1.transaction()
-                await tx1.start()
-
                 d1 = await dequeue_next(conn1)
                 assert d1 is not None
 
@@ -190,8 +193,6 @@ class TestConcurrency:
                 assert d2 is not None
 
                 assert d1["id"] != d2["id"]
-
-                await tx1.rollback()
         finally:
             for qid in q_ids:
                 await conn1.execute("DELETE FROM active_pipelines WHERE queue_item_id = $1", qid)

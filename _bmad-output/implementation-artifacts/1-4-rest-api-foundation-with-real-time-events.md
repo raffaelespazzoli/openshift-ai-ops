@@ -112,11 +112,11 @@ so that I can monitor alert processing from the web UI or automation tooling wit
 
 ### Review Findings
 
-- [ ] [Review][Patch] TokenReview disables TLS verification when the service-account CA bundle is missing [`backend/src/api/auth.py:74`]
-- [ ] [Review][Patch] 401 auth failures bypass the required `{error, code, detail}` error envelope [`backend/src/api/auth.py:68`]
-- [ ] [Review][Patch] Request validation errors still return FastAPI's default 422 payload instead of `ApiError` [`backend/src/api/app.py:92`]
-- [ ] [Review][Patch] SSE reconnect support is incomplete because `Last-Event-ID` is ignored and event IDs reset per connection [`backend/src/api/events.py:35`]
-- [ ] [Review][Patch] Audit middleware records failed state-changing requests instead of only successful ones [`backend/src/api/audit.py:35`]
+- [x] [Review][Patch] TokenReview disables TLS verification when the service-account CA bundle is missing [`backend/src/api/auth.py:74`] — **Fixed**: When CA bundle is missing and `K8S_TLS_VERIFY_DISABLED` is not set, auth raises an error and refuses the request. Only explicit opt-in via env var allows `verify=False`.
+- [x] [Review][Patch] 401 auth failures bypass the required `{error, code, detail}` error envelope [`backend/src/api/auth.py:68`] — **Fixed**: Custom `AuthenticationError` exception with dedicated handler returns `ApiError(error=..., code=ERROR_UNAUTHORIZED, detail=...)` as structured JSON with `WWW-Authenticate: Bearer` header.
+- [x] [Review][Patch] Request validation errors still return FastAPI's default 422 payload instead of `ApiError` [`backend/src/api/app.py:92`] — **Fixed**: Custom exception handlers for both `RequestValidationError` and `ValidationError` transform errors into `ApiError` with structured field-level detail.
+- [x] [Review][Patch] SSE reconnect support is incomplete because `Last-Event-ID` is ignored and event IDs reset per connection [`backend/src/api/events.py:35`] — **Fixed**: `Last-Event-ID` header is parsed and passed to `event_bus.subscribe(last_event_id=...)`. Event bus maintains a bounded replay buffer (1024 events) and replays missed events on reconnection.
+- [x] [Review][Patch] Audit middleware records failed state-changing requests instead of only successful ones [`backend/src/api/audit.py:35`] — **Fixed**: `dispatch()` checks `if not (200 <= response.status_code < 300): return response` — only 2xx responses trigger audit logging.
 
 ## Dev Notes
 
