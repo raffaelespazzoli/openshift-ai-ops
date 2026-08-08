@@ -21,6 +21,19 @@ correlation:
   maxAgeMultiplier: 3
   sealingCheckIntervalSeconds: 10
 
+alertmanager:
+  url: ""
+
+queue:
+  parallelismCap: 3
+  ttlSeconds: 3600
+  pollIntervalSeconds: 5
+  staleProcessingTimeoutSeconds: 900
+  priorityWeights:
+    critical: 100
+    warning: 50
+    info: 10
+
 postgresql:
   replicaCount: 1
   image:

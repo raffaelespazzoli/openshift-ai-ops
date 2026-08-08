@@ -30,6 +30,7 @@ from ..db.correlation import (
 )
 from ..models.root_cause_event import CorrelationEvidence, CorrelationLayer
 from ..models.state_machine import IncidentState, transition
+from .priority_queue import enqueue_rce
 from .settling import check_group_sealing, get_settling_window, recalculate_group_window
 from .subsystem_graph import are_cascade_related, extract_subsystem
 
@@ -310,23 +311,48 @@ def _find_cascade_match_subsystem(
 async def seal_expired_groups(conn: asyncpg.Connection | asyncpg.Pool) -> int:
     """Check for and seal expired correlation groups.
 
+    After sealing, enqueues the RCE into the priority queue for diagnosis dispatch.
     Returns the number of groups sealed.
     """
     groups_to_seal = await get_groups_to_seal(conn)
     sealed_count = 0
 
     for group in groups_to_seal:
-        sealed_data = await seal_group(conn, group["id"])
+        async with conn.transaction():
+            sealed_data = await seal_group(conn, group["id"])
 
-        for inc_id in sealed_data["incident_ids"]:
+            highest_severity = _determine_highest_severity(conn, sealed_data)
+
+            for inc_id in sealed_data["incident_ids"]:
+                try:
+                    await _transition_incident(
+                        conn, inc_id, IncidentState.CORRELATING, IncidentState.QUEUED
+                    )
+                except Exception:
+                    logger.warning(
+                        "Could not transition incident to queued (may already be transitioned)",
+                        extra={"incident_id": str(inc_id), "group_id": str(group["id"])},
+                    )
+
+            sealed_at = sealed_data.get("sealed_at", datetime.now(timezone.utc))
+            severity = await highest_severity
+
+            representative_incident = sealed_data["incident_ids"][0]
             try:
-                await _transition_incident(
-                    conn, inc_id, IncidentState.CORRELATING, IncidentState.QUEUED
+                await enqueue_rce(
+                    conn,
+                    root_cause_event_id=sealed_data["id"],
+                    incident_id=representative_incident,
+                    severity=severity,
+                    sealed_at=sealed_at,
                 )
-            except Exception:
-                logger.warning(
-                    "Could not transition incident to queued (may already be transitioned)",
-                    extra={"incident_id": str(inc_id), "group_id": str(group["id"])},
+            except asyncpg.UniqueViolationError:
+                logger.info(
+                    "RCE already enqueued (duplicate seal)",
+                    extra={
+                        "incident_id": str(representative_incident),
+                        "group_id": str(group["id"]),
+                    },
                 )
 
         sealed_count += 1
@@ -339,6 +365,30 @@ async def seal_expired_groups(conn: asyncpg.Connection | asyncpg.Pool) -> int:
         )
 
     return sealed_count
+
+
+async def _determine_highest_severity(
+    conn: asyncpg.Connection | asyncpg.Pool,
+    sealed_data: dict,
+) -> str:
+    """Determine the highest severity among alerts in a sealed group."""
+    severity_order = {"critical": 0, "warning": 1, "info": 2}
+    highest = "info"
+
+    for alert_id in sealed_data["alert_ids"]:
+        row = await conn.fetchrow(
+            "SELECT labels FROM alerts WHERE id = $1", alert_id
+        )
+        if row and row["labels"]:
+            import json as _json
+            labels = row["labels"]
+            if isinstance(labels, str):
+                labels = _json.loads(labels)
+            sev = labels.get("severity", "warning")
+            if severity_order.get(sev, 1) < severity_order.get(highest, 2):
+                highest = sev
+
+    return highest
 
 
 async def _transition_incident(

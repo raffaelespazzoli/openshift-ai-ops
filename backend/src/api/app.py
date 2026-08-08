@@ -17,6 +17,7 @@ from ..config.settings import get_correlation_settings
 from ..db import close_pool, get_pool
 from ..models.api import ERROR_INTERNAL, ERROR_NOT_FOUND, ERROR_VALIDATION, ApiError
 from ..pipeline.correlator import seal_expired_groups
+from ..pipeline.dispatcher import run_dispatcher
 from .audit import AuditMiddleware
 from .auth import AuthenticationError, handle_authentication_error
 from .event_bus import get_event_bus
@@ -58,11 +59,16 @@ async def _background_sealing_sweep() -> None:
 async def lifespan(app: FastAPI):
     """Manage application lifecycle."""
     logger.info("Application starting", extra={"component": "api"})
-    # Initialize the event bus singleton on startup
     get_event_bus()
     sealing_task = asyncio.create_task(_background_sealing_sweep())
+    dispatcher_task = asyncio.create_task(run_dispatcher())
     yield
+    dispatcher_task.cancel()
     sealing_task.cancel()
+    try:
+        await dispatcher_task
+    except asyncio.CancelledError:
+        pass
     try:
         await sealing_task
     except asyncio.CancelledError:

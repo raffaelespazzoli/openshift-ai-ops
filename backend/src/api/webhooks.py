@@ -7,6 +7,7 @@ BackgroundTasks to meet the 500ms SLA.
 
 from __future__ import annotations
 
+import asyncpg
 from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -16,6 +17,7 @@ from ..db import create_alert, create_incident, get_pool, record_resolved_alert
 from ..db.correlation import check_dedup, update_dedup_timestamp
 from ..models.webhook import AlertManagerWebhook, WebhookAlertStatus
 from ..pipeline.correlator import process_alert_for_correlation
+from ..pipeline.priority_queue import cancel_queued_rce
 
 router = APIRouter()
 logger = get_logger(Component.API)
@@ -81,11 +83,54 @@ async def _process_webhook(payload: AlertManagerWebhook) -> None:
                         severity=severity,
                     )
             elif alert.status == WebhookAlertStatus.RESOLVED:
-                await record_resolved_alert(
+                resolved_row = await record_resolved_alert(
                     conn,
                     fingerprint=alert.fingerprint,
                     resolved_at=alert.ends_at,
                 )
+                if resolved_row:
+                    await _attempt_queue_cancellation(
+                        conn, resolved_row["incident_id"]
+                    )
+
+
+async def _attempt_queue_cancellation(
+    conn: asyncpg.Connection | asyncpg.Pool,
+    incident_id,
+) -> None:
+    """Check if all alerts in the RCE group are resolved; if so, cancel the queue item.
+
+    Looks up the incident's correlation group, checks all member alerts,
+    and cancels the queue entry only if ALL alerts are resolved.
+    """
+    import uuid as _uuid
+
+    rce_id = await conn.fetchval(
+        "SELECT root_cause_event_id FROM incidents WHERE id = $1", incident_id
+    )
+    if rce_id is None:
+        return
+
+    all_resolved = await conn.fetchval(
+        """
+        SELECT NOT EXISTS(
+            SELECT 1 FROM alert_group_members agm
+            JOIN alerts a ON a.id = agm.alert_id
+            WHERE agm.group_id = $1 AND a.status = 'firing'
+        )
+        """,
+        rce_id,
+    )
+    if all_resolved:
+        cancelled = await cancel_queued_rce(conn, rce_id)
+        if cancelled:
+            logger.info(
+                "Queue cancellation: all alerts resolved",
+                extra={
+                    "incident_id": str(incident_id),
+                    "root_cause_event_id": str(rce_id),
+                },
+            )
 
 
 @router.post("/api/v1/webhooks/alertmanager")

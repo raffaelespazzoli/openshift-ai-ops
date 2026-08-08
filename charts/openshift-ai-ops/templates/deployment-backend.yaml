@@ -48,6 +48,24 @@ spec:
               value: "{{ .Values.correlation.maxAgeMultiplier }}"
             - name: CORRELATION_SEALING_INTERVAL
               value: "{{ .Values.correlation.sealingCheckIntervalSeconds }}"
+            - name: QUEUE_PARALLELISM_CAP
+              value: "{{ .Values.queue.parallelismCap }}"
+            - name: QUEUE_TTL_SECONDS
+              value: "{{ .Values.queue.ttlSeconds }}"
+            - name: QUEUE_POLL_INTERVAL_SECONDS
+              value: "{{ .Values.queue.pollIntervalSeconds }}"
+            - name: QUEUE_STALE_PROCESSING_TIMEOUT_SECONDS
+              value: "{{ .Values.queue.staleProcessingTimeoutSeconds }}"
+            - name: QUEUE_PRIORITY_WEIGHT_CRITICAL
+              value: "{{ .Values.queue.priorityWeights.critical }}"
+            - name: QUEUE_PRIORITY_WEIGHT_WARNING
+              value: "{{ .Values.queue.priorityWeights.warning }}"
+            - name: QUEUE_PRIORITY_WEIGHT_INFO
+              value: "{{ .Values.queue.priorityWeights.info }}"
+            {{- if .Values.alertmanager.url }}
+            - name: ALERTMANAGER_URL
+              value: "{{ .Values.alertmanager.url }}"
+            {{- end }}
           livenessProbe:
             tcpSocket:
               port: {{ .Values.backend.port }}
