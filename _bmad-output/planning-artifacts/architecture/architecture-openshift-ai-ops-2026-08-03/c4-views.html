@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenShift AI Ops — Architecture C4 Views</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface-hover: #222633;
+    --border: #2a2e3a;
+    --text: #e1e4eb;
+    --text-muted: #8b90a0;
+    --accent: #5b9cf5;
+    --accent-dim: #3a6fc4;
+    --danger: #e55353;
+    --success: #3e8635;
+    --warning: #f0ab00;
+    --info: #2b9af3;
+    --radius: 8px;
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+
+  .header {
+    background: linear-gradient(135deg, #1a1d27 0%, #222840 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 3rem 2rem 2rem;
+    text-align: center;
+  }
+
+  .header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.5rem;
+  }
+
+  .header .subtitle {
+    color: var(--text-muted);
+    font-size: 1rem;
+  }
+
+  .header .meta {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    margin-top: 1.5rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+
+  .header .meta span {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 0.15rem 0.6rem;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .badge-paradigm { background: rgba(91, 156, 245, 0.15); color: var(--accent); }
+  .badge-altitude { background: rgba(62, 134, 53, 0.15); color: var(--success); }
+
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(15, 17, 23, 0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+  }
+
+  nav a {
+    color: var(--text-muted);
+    text-decoration: none;
+    padding: 0.9rem 1.2rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+  }
+
+  nav a:hover { color: var(--text); }
+  nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  main {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  section {
+    margin-bottom: 4rem;
+    scroll-margin-top: 4rem;
+  }
+
+  section h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  section h2 .level-tag {
+    font-size: 0.7rem;
+    background: rgba(91, 156, 245, 0.12);
+    color: var(--accent);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+
+  .description {
+    color: var(--text-muted);
+    margin-bottom: 1.5rem;
+    max-width: 72ch;
+    font-size: 0.95rem;
+  }
+
+  .diagram-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2rem;
+    overflow-x: auto;
+  }
+
+  .diagram-card .mermaid {
+    display: flex;
+    justify-content: center;
+  }
+
+  .diagram-card svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  .key-decisions {
+    margin-top: 1.5rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+
+  .ad-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.2rem;
+    transition: border-color 0.2s;
+  }
+
+  .ad-card:hover { border-color: var(--accent-dim); }
+
+  .ad-card .ad-id {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--accent);
+    margin-bottom: 0.3rem;
+  }
+
+  .ad-card .ad-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .ad-card .ad-rule {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+  }
+
+  .stack-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+  }
+
+  .stack-table th {
+    text-align: left;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .stack-table td {
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
+    border-bottom: 1px solid rgba(42, 46, 58, 0.5);
+  }
+
+  .stack-table td:first-child { font-weight: 600; }
+  .stack-table td:nth-child(2) {
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--accent);
+  }
+
+  .state-machine {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem 2rem;
+    margin-top: 1rem;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .state-machine .state { color: var(--accent); font-weight: 600; }
+  .state-machine .arrow { color: var(--text-muted); }
+  .state-machine .terminal { color: var(--success); font-weight: 600; }
+  .state-machine .failed { color: var(--danger); font-weight: 600; }
+
+  footer {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    border-top: 1px solid var(--border);
+  }
+
+  @media (max-width: 768px) {
+    .header { padding: 2rem 1rem 1.5rem; }
+    .header h1 { font-size: 1.4rem; }
+    .header .meta { flex-direction: column; gap: 0.5rem; }
+    main { padding: 1rem; }
+    .key-decisions { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>OpenShift AI Ops</h1>
+  <div class="subtitle">Architecture C4 Views &amp; Key Decisions</div>
+  <div class="meta">
+    <span><span class="badge badge-paradigm">Staged Pipeline</span></span>
+    <span><span class="badge badge-altitude">Feature Altitude</span></span>
+    <span>23 Architecture Decisions</span>
+    <span>August 2026</span>
+  </div>
+</div>
+
+<nav id="nav">
+  <a href="#context" class="active">Context</a>
+  <a href="#container">Containers</a>
+  <a href="#component">Components</a>
+  <a href="#pipeline">Pipeline</a>
+  <a href="#entities">Entities</a>
+  <a href="#deployment">Deployment</a>
+  <a href="#state">State Machine</a>
+  <a href="#stack">Stack</a>
+  <a href="#decisions">Key Decisions</a>
+</nav>
+
+<main>
+
+<section id="context">
+  <h2>System Context <span class="level-tag">C4 Level 1</span></h2>
+  <p class="description">OpenShift AI Ops receives alerts from AlertManager, diagnoses root causes using AI agents with cluster-specific knowledge, and executes policy-gated remediations. SREs approve high-risk actions; ops leads review operational summaries.</p>
+  <div class="diagram-card">
+    <pre class="mermaid">
+graph TD
+    SRE["👤 SRE / On-Call Engineer<br/><i>Monitors cluster health,<br/>approves remediations</i>"]
+    LEAD["👤 Ops Team Lead<br/><i>Reviews operational summaries</i>"]
+
+    AIOPS["🔷 OpenShift AI Ops<br/><i>Alert-driven AI diagnosis<br/>and remediation</i>"]
+
+    AM["⬡ AlertManager<br/><i>Fires alert webhooks</i>"]
+    CLUSTER["⬡ OpenShift Cluster<br/><i>The managed cluster</i>"]
+    LLM["⬡ LLM Endpoint(s)<br/><i>Model inference</i>"]
+    PROM["⬡ Prometheus<br/><i>Scrapes metrics</i>"]
+
+    AM -->|"Webhook (firing/resolved)<br/>HTTP POST"| AIOPS
+    AIOPS -->|"Diagnosis queries<br/>MCP read-only"| CLUSTER
+    AIOPS -->|"Remediation execution<br/>MCP read-write"| CLUSTER
+    AIOPS -->|"Agent inference<br/>HTTPS"| LLM
+    SRE -->|"Review & approve<br/>HTTPS"| AIOPS
+    LEAD -->|"View statistics<br/>HTTPS"| AIOPS
+    PROM -->|"Scrape /metrics<br/>HTTP"| AIOPS
+
+    classDef person fill:#1a3a5c,stroke:#5b9cf5,color:#e1e4eb
+    classDef system fill:#1a3a2c,stroke:#3e8635,color:#e1e4eb
+    classDef ext fill:#2a1a3a,stroke:#8b5cf6,color:#e1e4eb
+
+    class SRE,LEAD person
+    class AIOPS system
+    class AM,CLUSTER,LLM,PROM ext
+    </pre>
+  </div>
+</section>
+
+<section id="container">
+  <h2>Container View <span class="level-tag">C4 Level 2</span></h2>
+  <p class="description">Five deployments in a single namespace. The backend collapses REST API, webhook receiver, and LangGraph agent pipeline into one Python process. Two MCP Server instances enforce the RBAC Airlock — diagnosis is read-only, remediation is read-write. Communication between backend and MCP servers uses Streamable HTTP transport.</p>
+  <div class="diagram-card">
+    <pre class="mermaid">
+graph TD
+    SRE["👤 SRE"]
+    AM["⬡ AlertManager"]
+    CLUSTER["⬡ OpenShift Cluster"]
+    LLM["⬡ LLM Endpoints"]
+
+    subgraph NS["openshift-ai-ops namespace"]
+        BE["🔷 Backend<br/><i>Python · FastAPI · LangGraph</i><br/>REST API + webhook + pipeline"]
+        FE["🔷 Frontend<br/><i>React · TypeScript · PatternFly</i><br/>Standalone web app"]
+        PG[("🔷 PostgreSQL + pgvector<br/><i>PostgreSQL 18</i><br/>Incidents · cases · embeddings<br/>checkpoints · audit")]
+        MR["🔒 MCP Server<br/><i>read-only</i><br/>SA: cluster-reader"]
+        MW["🔓 MCP Server<br/><i>read-write</i><br/>SA: cluster-admin"]
+    end
+
+    AM -->|"Alert webhooks<br/>HTTP POST"| BE
+    SRE -->|"HTTPS"| FE
+    FE -->|"REST + SSE"| BE
+    BE -->|"SQL + pgvector"| PG
+    BE -->|"MCP Streamable HTTP"| MR
+    BE -->|"MCP Streamable HTTP"| MW
+    MR -->|"K8s API<br/>read-only"| CLUSTER
+    MW -->|"K8s API<br/>read-write"| CLUSTER
+    BE -->|"HTTPS"| LLM
+
+    classDef person fill:#1a3a5c,stroke:#5b9cf5,color:#e1e4eb
+    classDef container fill:#1a3a2c,stroke:#3e8635,color:#e1e4eb
+    classDef ext fill:#2a1a3a,stroke:#8b5cf6,color:#e1e4eb
+    classDef db fill:#1a2a3a,stroke:#2b9af3,color:#e1e4eb
+    classDef secure fill:#3a1a1a,stroke:#e55353,color:#e1e4eb
+    classDef ns fill:#141720,stroke:#2a2e3a,color:#8b90a0
+
+    class SRE person
+    class BE,FE container
+    class PG db
+    class MR,MW secure
+    class AM,CLUSTER,LLM ext
+    class NS ns
+    </pre>
+  </div>
+</section>
+
+<section id="component">
+  <h2>Component View — Backend <span class="level-tag">C4 Level 3</span></h2>
+  <p class="description">The backend's internal modules mirror the pipeline paradigm. The Shared Types module (<code>models/</code>) is the dependency leaf — everything imports from it, it imports nothing. Agent code lives inside stages, never between them. The Knowledge Layer handles both RAG retrieval and the semantic cache.</p>
+  <div class="diagram-card">
+    <pre class="mermaid">
+graph TD
+    subgraph Backend
+        API["📡 API Layer<br/><i>FastAPI</i><br/>REST · SSE · webhooks"]
+        PIPE["⚙️ Pipeline Engine<br/><i>LangGraph</i><br/>triage → diagnosis →<br/>skeptic → remediation →<br/>execution → observation"]
+        AGENTS["🤖 Agent Pool<br/><i>LangGraph nodes</i><br/>Orchestrator · specialists<br/>skeptics · planner"]
+        MODELS["📋 Shared Types<br/><i>Pydantic</i><br/>RootCauseEvent<br/>DiagnosisObject<br/>RemediationPlan<br/>CaseRecord"]
+        KNOW["📚 Knowledge Layer<br/><i>RAG + semantic cache</i><br/>Runbooks · RHOKP<br/>top-k retrieval"]
+        DB["💾 Data Layer<br/><i>SQLAlchemy/asyncpg</i><br/>Models · migrations<br/>pgvector queries"]
+        CONFIG["⚙️ Config<br/><i>Pydantic Settings</i><br/>LLM · policy matrix<br/>operational params"]
+    end
+
+    API --> PIPE
+    API --> MODELS
+    API --> DB
+    PIPE --> AGENTS
+    PIPE --> MODELS
+    PIPE --> DB
+    PIPE --> KNOW
+    AGENTS --> MODELS
+    AGENTS --> KNOW
+    AGENTS --> DB
+    KNOW --> DB
+
+    classDef leaf fill:#1a3a2c,stroke:#3e8635,color:#e1e4eb
+    classDef core fill:#1a2a3a,stroke:#2b9af3,color:#e1e4eb
+    classDef internal fill:#1a1d27,stroke:#2a2e3a,color:#e1e4eb
+
+    class MODELS leaf
+    class API,PIPE core
+    class AGENTS,KNOW,DB,CONFIG internal
+    </pre>
+  </div>
+</section>
+
+<section id="pipeline">
+  <h2>Pipeline Flow <span class="level-tag">AD-1</span></h2>
+  <p class="description">The core paradigm. Every alert enters the directed pipeline and flows through typed stages. The fast-path bypasses LLM diagnosis for known patterns. The RBAC Airlock separates diagnosis (read-only) from remediation (read-write). Re-challenge loops are bounded to prevent infinite cycling.</p>
+  <div class="diagram-card">
+    <pre class="mermaid">
+graph TD
+    A["🔔 Alert webhook"] --> B{"Dedup?"}
+    B -->|duplicate| DROP["Absorb"]
+    B -->|new| C["Correlation buffer<br/><i>severity-based window</i>"]
+    C -->|"settling window"| D["Root-Cause Event sealed"]
+    D --> E{"Fast-path<br/>match?"}
+    E -->|"yes, above threshold"| FP["⚡ Replay proven<br/>remediation"]
+    E -->|no| F["🤖 Orchestrator"]
+    F --> G["Specialists / Generalist"]
+    G --> H["Structured Diagnosis"]
+    H --> I["🔍 Diagnosis Skeptic"]
+    I -->|"hash unchanged"| J["📄 Immutable Diagnosis<br/>Artifact"]
+    I -->|"hash changed"| H2["Re-diagnose"]
+    H2 --> I2["Re-challenge ×1"]
+    I2 --> J
+
+    J -->|"🔒 RBAC Airlock"| K["📝 Remediation Planner"]
+    K --> L["🔍 Remediation Skeptic"]
+    L -->|stable| M["🧪 Dry-Run<br/><i>--dry-run=server</i>"]
+    L -->|changed| K2["Re-plan"]
+    K2 --> L2["Re-challenge ×1"]
+    L2 --> M
+    FP --> M
+
+    M --> N{"Policy Gate<br/><i>sev × blast × conf</i>"}
+    N -->|auto-execute| O["⚡ Executor<br/><i>global lock</i>"]
+    N -->|"human required"| P["⏳ Approval Queue"]
+    P -->|approved| O
+    P -->|rejected| CLOSE["Close with reason"]
+    O -->|cooldown| Q["👁️ Outcome Observer"]
+    Q -->|resolved| R["💾 Case Record →<br/>Learning Store"]
+    Q -->|"not resolved"| S["⚠️ Flag for review"]
+
+    classDef start fill:#1a3a5c,stroke:#5b9cf5,color:#e1e4eb
+    classDef decision fill:#2a1a3a,stroke:#8b5cf6,color:#e1e4eb
+    classDef process fill:#1a2a3a,stroke:#2b9af3,color:#e1e4eb
+    classDef security fill:#3a1a1a,stroke:#e55353,color:#e1e4eb
+    classDef success fill:#1a3a2c,stroke:#3e8635,color:#e1e4eb
+    classDef warning fill:#3a2a0a,stroke:#f0ab00,color:#e1e4eb
+    classDef skip fill:#1a1d27,stroke:#2a2e3a,color:#8b90a0
+
+    class A start
+    class B,E,N decision
+    class C,D,F,G,H,H2,I,I2,K,K2,L,L2,M,O,Q process
+    class J security
+    class R success
+    class S,P warning
+    class DROP,CLOSE skip
+    </pre>
+  </div>
+</section>
+
+<section id="entities">
+  <h2>Core Entity Relationships</h2>
+  <p class="description">The pipeline produces and consumes these typed artifacts. Every schema is defined in the shared types module (<code>backend/src/models/</code>). Structured fields coexist with unstructured text (LLM reasoning).</p>
+  <div class="diagram-card">
+    <pre class="mermaid">
+erDiagram
+    ALERT ||--o{ ROOT_CAUSE_EVENT : "grouped into"
+    ROOT_CAUSE_EVENT ||--|| DIAGNOSIS : "produces"
+    DIAGNOSIS ||--|| SKEPTIC_REVIEW : "challenged by"
+    DIAGNOSIS ||--|| REMEDIATION_PLAN : "drives"
+    REMEDIATION_PLAN ||--|| SKEPTIC_REVIEW : "challenged by"
+    REMEDIATION_PLAN ||--o| EXECUTION : "may execute"
+    EXECUTION ||--|| OUTCOME : "observed"
+    OUTCOME ||--|| CASE_RECORD : "stored as"
+    CASE_RECORD }o--|| KNOWLEDGE_TABLE : "in"
+    RUNBOOK_CHUNK }o--|| KNOWLEDGE_TABLE : "in"
+    </pre>
+  </div>
+</section>
+
+<section id="deployment">
+  <h2>Deployment Topology</h2>
+  <p class="description">Single Helm chart, single namespace, no CRDs. PostgreSQL is a StatefulSet with PVC for durability. The RBAC Airlock is enforced by deploying two MCP Server instances with different ServiceAccounts — never by application-level access control.</p>
+  <div class="diagram-card">
+    <pre class="mermaid">
+graph LR
+    subgraph NS["openshift-ai-ops namespace"]
+        BE["backend<br/><i>Deployment: 1 replica</i><br/>FastAPI + LangGraph"]
+        FE["frontend<br/><i>Deployment: 1 replica</i><br/>nginx + React"]
+        PG[("postgresql<br/><i>StatefulSet: 1 replica</i><br/>PVC-backed")]
+        MR["mcp-readonly<br/><i>Deployment: 1 replica</i><br/>SA: cluster-reader"]
+        MW["mcp-readwrite<br/><i>Deployment: 1 replica</i><br/>SA: cluster-admin"]
+    end
+
+    AM["AlertManager"] -->|webhook| BE
+    SRE["SRE Browser"] -->|HTTPS| FE
+    FE -->|"REST + SSE"| BE
+    BE -->|SQL| PG
+    BE -->|"MCP HTTP"| MR
+    BE -->|"MCP HTTP"| MW
+    BE -->|HTTPS| LLM["LLM Endpoints"]
+    MR -->|"K8s API"| CLUSTER["OpenShift Cluster"]
+    MW -->|"K8s API"| CLUSTER
+    PROM["Prometheus"] -->|"scrape /metrics"| BE
+
+    classDef ns fill:#141720,stroke:#2a2e3a,color:#8b90a0
+    class NS ns
+    </pre>
+  </div>
+</section>
+
+<section id="state">
+  <h2>Incident State Machine <span class="level-tag">AD-19</span></h2>
+  <p class="description">Every incident follows one canonical state machine. Only the pipeline engine advances state; the API layer reads. The fast-path shortcut skips from <code>queued</code> to <code>diagnosed</code>.</p>
+  <div class="diagram-card">
+    <pre class="mermaid">
+stateDiagram-v2
+    [*] --> received
+    received --> correlating : alert arrives
+    correlating --> queued : settling window closed
+    queued --> diagnosing : dequeued by pipeline
+    queued --> diagnosed : fast-path match
+    diagnosing --> diagnosed : diagnosis complete
+    diagnosed --> awaiting_approval : policy gate requires human
+    diagnosed --> executing : auto-approved
+    awaiting_approval --> executing : SRE approves
+    awaiting_approval --> closed : SRE rejects
+    executing --> observing : execution complete
+    observing --> resolved : alert cleared
+    observing --> failed : alert persists / rollback
+    resolved --> [*]
+    failed --> [*]
+    closed --> [*]
+    </pre>
+  </div>
+</section>
+
+<section id="stack">
+  <h2>Technology Stack</h2>
+  <p class="description">All versions web-verified August 2026. Pinned to minor version ranges for reproducibility.</p>
+  <div class="diagram-card">
+    <table class="stack-table">
+      <thead>
+        <tr><th>Technology</th><th>Version</th><th>Role</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Python</td><td>≥3.10</td><td>Backend language (LangGraph requirement)</td></tr>
+        <tr><td>LangGraph</td><td>1.2.x</td><td>Agent pipeline runtime, checkpoint persistence</td></tr>
+        <tr><td>FastAPI</td><td>0.141.x</td><td>REST API + SSE + webhook receiver</td></tr>
+        <tr><td>PostgreSQL</td><td>18.x</td><td>Structured data + LangGraph checkpoints</td></tr>
+        <tr><td>pgvector</td><td>0.8.x</td><td>Vector embeddings (case records, knowledge, semantic cache)</td></tr>
+        <tr><td>kubernetes-mcp-server</td><td>0.0.66+</td><td>Cluster access (pre-1.0, pin to tested release)</td></tr>
+        <tr><td>React</td><td>19.x</td><td>Frontend framework</td></tr>
+        <tr><td>TypeScript</td><td>7.x</td><td>Frontend language (Go-native rewrite)</td></tr>
+        <tr><td>@patternfly/react-core</td><td>6.6.x</td><td>UI component library</td></tr>
+        <tr><td>Helm</td><td>4.x</td><td>Deployment packaging</td></tr>
+        <tr><td>prometheus-client</td><td>0.21.x</td><td>Python metrics exposition</td></tr>
+        <tr><td>nginx</td><td>1.27.x</td><td>Frontend static asset serving</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="decisions">
+  <h2>Key Architecture Decisions</h2>
+  <p class="description">23 decisions fixing the invariants that keep independently-built epics from diverging. Each carries Binds (what it governs), Prevents (the divergence it stops), and a Rule (the enforceable constraint).</p>
+  <div class="key-decisions">
+    <div class="ad-card">
+      <div class="ad-id">AD-1</div>
+      <div class="ad-title">Staged Pipeline Paradigm</div>
+      <div class="ad-rule">Every stage has typed input/output contracts. Agents live inside stages, never between them. Fast-path and re-challenge are conditional edges.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-2</div>
+      <div class="ad-title">RBAC Airlock</div>
+      <div class="ad-rule">cluster-reader for diagnosis, cluster-admin for remediation. Helm-configurable. Dry-run pre-flight catches permission gaps.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-3</div>
+      <div class="ad-title">Two Schema Domains</div>
+      <div class="ad-rule">LangGraph owns langgraph_* tables. Everything else is application schema with application-owned migrations.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-4</div>
+      <div class="ad-title">Shared Types Module</div>
+      <div class="ad-rule">All stage-boundary artifacts in backend/src/models/. Structured + unstructured fields coexist. The contract IS the shared types.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-5</div>
+      <div class="ad-title">Deterministic Correlation</div>
+      <div class="ad-rule">Five-layer correlator (no LLM): dedup → namespace+time → labels+time → dependency graph → Learning Store. Over-group, refine in diagnosis.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-6</div>
+      <div class="ad-title">Severity-Based Settling</div>
+      <div class="ad-rule">Critical=60s, Warning=5m, Info=10m. Group inherits shortest window. Max age = 3× window.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-7</div>
+      <div class="ad-title">Direct Per-Agent LLM Config</div>
+      <div class="ad-rule">No centralized gateway. Each agent role has its own client. Model routing and semantic cache are middleware wrappers.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-8</div>
+      <div class="ad-title">Python + React/TS</div>
+      <div class="ad-rule">Backend: Python (FastAPI + LangGraph). Frontend: React + TypeScript + PatternFly. MCP Server: Go (external).</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-9</div>
+      <div class="ad-title">Five-Deployment Topology</div>
+      <div class="ad-rule">backend, frontend, postgresql, mcp-readonly, mcp-readwrite. Backend collapses API + pipeline. MCP via Streamable HTTP.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-10</div>
+      <div class="ad-title">SSE + Path-Versioned REST</div>
+      <div class="ad-rule">SSE for live pipeline updates. REST at /api/v1/ for CRUD. Frontend falls back to polling on SSE drop.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-11</div>
+      <div class="ad-title">In-Process Observability</div>
+      <div class="ad-rule">/metrics via prometheus-client. ServiceMonitor in Helm. JSON logging to stdout. LangGraph tracing via checkpoints.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-12</div>
+      <div class="ad-title">OpenShift OAuth</div>
+      <div class="ad-rule">Bearer tokens validated against OpenShift OAuth. Aligns with Console plugin migration path.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-13</div>
+      <div class="ad-title">Unified RAG via pgvector</div>
+      <div class="ad-rule">Runbooks + RHOKP bundled at build time, indexed into pgvector tables. Same retrieval path. Skills are callable tools, not RAG.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-14</div>
+      <div class="ad-title">Monorepo Source Tree</div>
+      <div class="ad-rule">backend/ (models/ is the leaf), frontend/, charts/, docs/. Directory layout mirrors the paradigm.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-15</div>
+      <div class="ad-title">Partial Evidence on MCP Timeout</div>
+      <div class="ad-rule">evidence_gaps field on diagnosis. Skeptic must challenge gaps. Policy Gate blocks auto-exec when gaps exist.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-16</div>
+      <div class="ad-title">Execution Freshness Gate</div>
+      <div class="ad-rule">Re-validate alert still firing before execution. Resolved webhooks don't cancel pipelines — freshness gate catches at execution.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-17</div>
+      <div class="ad-title">Cache Invalidation Fingerprint</div>
+      <div class="ad-rule">Semantic cache keyed by OCP version + topology hash. Staleness detected at lookup. No background reconciler.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-18</div>
+      <div class="ad-title">Global Remediation Lock</div>
+      <div class="ad-rule">PostgreSQL advisory lock. One remediation at a time. Survives pod restart. Configurable cooldown.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-19</div>
+      <div class="ad-title">Canonical State Machine</div>
+      <div class="ad-rule">received→correlating→queued→diagnosing→diagnosed→awaiting_approval→executing→observing→resolved|failed. Pipeline advances; API reads.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-20</div>
+      <div class="ad-title">Case Record Schema Ownership</div>
+      <div class="ad-rule">Learning Store module (db/) owns the schema. Correlation reads via pgvector similarity only — no schema changes.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-21</div>
+      <div class="ad-title">SSE Event Envelope</div>
+      <div class="ad-rule">{event, data: {incident_id, stage, state, timestamp, payload}}. Dot-notation event names. Envelope in shared types.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-22</div>
+      <div class="ad-title">Semantic Cache in knowledge/</div>
+      <div class="ad-rule">Single middleware in knowledge/. db/ provides storage; knowledge/ owns logic. No duplicate caches.</div>
+    </div>
+    <div class="ad-card">
+      <div class="ad-id">AD-23</div>
+      <div class="ad-title">Priority Queue Concurrency</div>
+      <div class="ad-rule">SELECT FOR UPDATE SKIP LOCKED for dequeue. Conditional UPDATE for cancellation. No in-memory queue.</div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  OpenShift AI Ops Architecture Spine · Generated 2026-08-05 · Source: ARCHITECTURE-SPINE.md
+</footer>
+
+<script>
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'dark',
+  themeVariables: {
+    primaryColor: '#1a2a3a',
+    primaryTextColor: '#e1e4eb',
+    primaryBorderColor: '#5b9cf5',
+    lineColor: '#5b9cf5',
+    secondaryColor: '#1a3a2c',
+    tertiaryColor: '#2a1a3a',
+    fontFamily: 'Inter, -apple-system, sans-serif',
+    fontSize: '14px'
+  },
+  flowchart: { curve: 'basis', padding: 20 },
+  er: { layoutDirection: 'TB' }
+});
+
+const nav = document.getElementById('nav');
+const links = nav.querySelectorAll('a');
+const sections = document.querySelectorAll('section');
+
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      links.forEach(l => l.classList.remove('active'));
+      const active = nav.querySelector(`a[href="#${entry.target.id}"]`);
+      if (active) active.classList.add('active');
+    }
+  });
+}, { rootMargin: '-20% 0px -80% 0px' });
+
+sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>

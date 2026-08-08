@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Architecture Spine Validation — OpenShift AI Ops</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface-raised: #1e2d4a;
+    --text: #e8e8e8;
+    --text-muted: #a0a0b0;
+    --critical: #ff4757;
+    --high: #ffa502;
+    --medium: #5b8def;
+    --low: #7bed9f;
+    --pass: #2ed573;
+    --fail: #ff4757;
+    --concern: #ffa502;
+    --border: #2a3a5e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.3rem; margin: 2rem 0 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  h3 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; }
+  .meta { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 2rem; }
+  .verdict-box {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem;
+    border-radius: 8px;
+    background: var(--surface);
+    border-left: 4px solid var(--fail);
+    margin-bottom: 2rem;
+  }
+  .verdict-label {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--fail);
+    text-transform: uppercase;
+  }
+  .verdict-summary { color: var(--text-muted); }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  .stat-card {
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+  }
+  .stat-card .number { font-size: 1.8rem; font-weight: 700; }
+  .stat-card .label { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; }
+  .stat-card.critical .number { color: var(--critical); }
+  .stat-card.high .number { color: var(--high); }
+  .stat-card.medium .number { color: var(--medium); }
+  .stat-card.low .number { color: var(--low); }
+  .reviewer {
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .reviewer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+  .reviewer-name { font-weight: 600; font-size: 1.05rem; }
+  .badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    text-transform: uppercase;
+  }
+  .badge-pass { background: rgba(46,213,115,0.15); color: var(--pass); }
+  .badge-fail { background: rgba(255,71,87,0.15); color: var(--fail); }
+  .badge-concern { background: rgba(255,165,2,0.15); color: var(--concern); }
+  .finding {
+    background: var(--surface-raised);
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    border-left: 3px solid var(--border);
+  }
+  .finding.critical { border-left-color: var(--critical); }
+  .finding.high { border-left-color: var(--high); }
+  .finding.medium { border-left-color: var(--medium); }
+  .finding.low { border-left-color: var(--low); }
+  .finding-severity {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.3rem;
+  }
+  .finding.critical .finding-severity { color: var(--critical); }
+  .finding.high .finding-severity { color: var(--high); }
+  .finding.medium .finding-severity { color: var(--medium); }
+  .finding.low .finding-severity { color: var(--low); }
+  .finding-title { font-weight: 600; margin-bottom: 0.3rem; }
+  .finding-detail { font-size: 0.9rem; color: var(--text-muted); }
+  .recommendation {
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-top: 2rem;
+    border: 1px solid var(--border);
+  }
+  .recommendation h3 { margin-top: 0; }
+  .recommendation ul { padding-left: 1.5rem; margin-top: 0.5rem; }
+  .recommendation li { margin-bottom: 0.4rem; color: var(--text-muted); }
+  code { background: var(--surface-raised); padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.85rem; }
+  .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; }
+</style>
+</head>
+<body>
+
+<h1>Architecture Spine Validation Report</h1>
+<p class="meta">OpenShift AI Ops &middot; Feature altitude &middot; Validated 2026-08-06 &middot; Spine finalized 2026-08-05</p>
+
+<div class="verdict-box">
+  <div>
+    <div class="verdict-label">FAIL</div>
+    <div class="verdict-summary">The spine has structural holes that will cause integration failures if epics are built independently. Recommend an Update pass to close the critical findings before epic decomposition.</div>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat-card critical"><div class="number">4</div><div class="label">Critical</div></div>
+  <div class="stat-card high"><div class="number">5</div><div class="label">High</div></div>
+  <div class="stat-card medium"><div class="number">3</div><div class="label">Medium</div></div>
+  <div class="stat-card low"><div class="number">2</div><div class="label">Low / Info</div></div>
+</div>
+
+<h2>Lint Pass</h2>
+<div class="reviewer">
+  <div class="reviewer-header">
+    <span class="reviewer-name">Deterministic Lint (lint_spine.py)</span>
+    <span class="badge badge-pass">Pass</span>
+  </div>
+  <p style="color: var(--text-muted); font-size: 0.9rem;">2 low-severity false positives: <code>{subsystem}/{failure-mode}</code> in the naming conventions table detected as template tokens. These are intentional taxonomy documentation — no action needed.</p>
+</div>
+
+<h2>Reviewer: Tech Verification</h2>
+<div class="reviewer">
+  <div class="reviewer-header">
+    <span class="reviewer-name">Technology &amp; Version Verification</span>
+    <span class="badge badge-pass">Pass</span>
+  </div>
+
+  <div class="finding high">
+    <div class="finding-severity">Should-Fix</div>
+    <div class="finding-title">nginx 1.27.x is EOL</div>
+    <div class="finding-detail">Reached end-of-life June 2025, unpatched for 6+ CVEs in 2026. Update to <code>1.30.x</code> (current stable).</div>
+  </div>
+
+  <div class="finding high">
+    <div class="finding-severity">Should-Fix</div>
+    <div class="finding-title">prometheus-client 0.21.x is stale</div>
+    <div class="finding-detail">Released Sep 2024, now 5 minor versions behind (current: 0.26.0). Update to <code>&ge;0.25.x</code>.</div>
+  </div>
+
+  <div class="finding low">
+    <div class="finding-severity">Info</div>
+    <div class="finding-title">TypeScript 7.0 has no programmatic API</div>
+    <div class="finding-detail">Ships compiler binary only; API deferred to 7.1 (~Oct 2026). Low risk for standard React builds.</div>
+  </div>
+
+  <div class="finding low">
+    <div class="finding-severity">Info</div>
+    <div class="finding-title">LangGraph.js reached feature parity</div>
+    <div class="finding-detail">"Python-first" framing in AD-8 is no longer technically precise (both hit 1.0 GA Oct 2025), though the Python choice remains well-justified on ecosystem breadth.</div>
+  </div>
+</div>
+
+<h2>Reviewer: Rubric Walker</h2>
+<div class="reviewer">
+  <div class="reviewer-header">
+    <span class="reviewer-name">Good-Spine Checklist</span>
+    <span class="badge badge-concern">Concern</span>
+  </div>
+
+  <div class="finding critical">
+    <div class="finding-severity">Critical</div>
+    <div class="finding-title">RHOKP topology contradicts the spec's resolved decision</div>
+    <div class="finding-detail">AD-13 bundles RHOKP into pgvector RAG and the Deferred table says the question is open. But the spec's Resolved Questions section already decided: deploy RHOKP as Solr + okp-mcp sidecar pods queried via MCP streamable-http. AD-9's five-pod topology is also wrong under the spec resolution. The spine was written before the spec resolved this — needs reconciliation.</div>
+  </div>
+
+  <div class="finding high">
+    <div class="finding-severity">High</div>
+    <div class="finding-title">Upgrade strategy is completely silent</div>
+    <div class="finding-detail">No AD, deferral, or open question addresses Helm upgrade behavior, in-flight pipeline handling during upgrades, or migration execution strategy. This is a whole operational dimension left undecided.</div>
+  </div>
+
+  <div class="finding high">
+    <div class="finding-severity">High</div>
+    <div class="finding-title">AD-9 pod topology: Deployment vs StatefulSet inconsistency</div>
+    <div class="finding-detail">PostgreSQL is called a "Deployment" in the AD-9 rule text but correctly shown as a StatefulSet in the Mermaid diagram. If the spec's RHOKP resolution is adopted, topology grows to 7+ pods.</div>
+  </div>
+
+  <div class="finding medium">
+    <div class="finding-severity">Medium</div>
+    <div class="finding-title">AD-2 defaults to <code>cluster-admin</code> without tighter baseline</div>
+    <div class="finding-detail">The PRD flagged this as the single highest-friction adoption point, yet the spine doesn't offer a recommended tighter baseline — only notes Helm configurability.</div>
+  </div>
+</div>
+
+<h2>Reviewer: Adversarial</h2>
+<div class="reviewer">
+  <div class="reviewer-header">
+    <span class="reviewer-name">Structural Hole Hunter</span>
+    <span class="badge badge-fail">Fail</span>
+  </div>
+
+  <div class="finding critical">
+    <div class="finding-severity">Critical</div>
+    <div class="finding-title">Pipeline-to-SSE event transport unspecified</div>
+    <div class="finding-detail">AD-21 defines event shapes but no delivery mechanism exists between <code>pipeline/</code> and <code>api/</code>. AD-14's dependency graph has no <code>pipeline/ &rarr; api/</code> path. Two epics (pipeline vs API/UI) will invent incompatible internal transports (in-process bus, Redis pub/sub, polling DB, etc.).</div>
+  </div>
+
+  <div class="finding critical">
+    <div class="finding-severity">Critical</div>
+    <div class="finding-title">AD-19 "only pipeline writes state" contradicts API writes</div>
+    <div class="finding-detail">Approval resumption, resolved-webhook cancellation (AD-23), and initial incident creation all require <code>api/</code> to write state that AD-19 forbids. AD-19 and AD-23 directly contradict each other on who can mutate incident/queue state.</div>
+  </div>
+
+  <div class="finding critical">
+    <div class="finding-severity">Critical</div>
+    <div class="finding-title">AD-18 conflates advisory locks and row-level locks</div>
+    <div class="finding-detail">Sentence 1 says "PostgreSQL advisory lock." Sentence 3 says "row-level in a dedicated <code>remediation_locks</code> table." These are mutually exclusive PostgreSQL features. Two epics implementing different sentences will produce two independent locking mechanisms.</div>
+  </div>
+
+  <div class="finding high">
+    <div class="finding-severity">High</div>
+    <div class="finding-title">AD-20 prescribes vector similarity for co-occurrence queries</div>
+    <div class="finding-detail">AD-5 layer 5 needs "which alert fingerprints historically co-occur?" — a discrete set-membership query. AD-20 constrains the correlation layer to "pgvector similarity search," which solves a semantically different problem. Correlation epic and learning-store epic will implement incompatible query interfaces.</div>
+  </div>
+
+  <div class="finding high">
+    <div class="finding-severity">High</div>
+    <div class="finding-title">Per-agent LLM config has two contradictory sources of truth</div>
+    <div class="finding-detail">AD-7 says "configured via Helm values." Conventions table says "Policy matrix and per-agent LLM config are runtime-mutable via API." No merge/override semantics specified — config epic and deployment epic will produce conflicting configuration paths.</div>
+  </div>
+
+  <div class="finding medium">
+    <div class="finding-severity">Medium</div>
+    <div class="finding-title">Audit log ownership unspecified</div>
+    <div class="finding-detail">Conventions say "all state-changing operations are audit-logged" — but no AD specifies who writes to the audit log (middleware? per-module? dedicated service?). API epic and pipeline epic may implement duplicate audit writes or miss each other's mutations.</div>
+  </div>
+
+  <div class="finding medium">
+    <div class="finding-severity">Medium</div>
+    <div class="finding-title">Evidence artifacts storage location unspecified</div>
+    <div class="finding-detail">AD-4 references "evidence artifacts" in the typed contract, and the Policy Gate blocks on their absence. But no AD specifies whether these are stored inline in the diagnosis object, in a blob store, or as PostgreSQL JSONB. Diagnosis epic and policy-gate epic may diverge.</div>
+  </div>
+</div>
+
+<div class="recommendation">
+  <h3>Recommendation</h3>
+  <p style="margin-bottom: 0.75rem;">The spine is architecturally sound in its paradigm and coverage, but has accumulated contradictions — likely from multiple revision rounds — that will break integration if epics proceed independently. An <strong>Update pass</strong> addressing the 4 critical findings is required before epic decomposition:</p>
+  <ul>
+    <li><strong>Reconcile RHOKP:</strong> Adopt the spec's Solr + okp-mcp resolution into AD-13 and AD-9 (update pod topology to 7 deployments).</li>
+    <li><strong>Specify pipeline&rarr;API event transport:</strong> New AD or tighten AD-21 (likely: in-process async queue since backend is one Python process per AD-9).</li>
+    <li><strong>Clarify state-write ownership in AD-19:</strong> Define which writes are "pipeline-owned" vs "API-permitted" (approvals, webhook cancellation, incident creation).</li>
+    <li><strong>Fix AD-18 lock semantics:</strong> Choose one mechanism (advisory lock OR row-level lock in a table) and state it consistently.</li>
+  </ul>
+  <p style="margin-top: 0.75rem; color: var(--text-muted);">The 5 high findings are important but won't cause hard integration failures — they can be resolved during or immediately after the critical fixes.</p>
+</div>
+
+<div class="footer">
+  <p>Generated by Architecture Validation Gate &middot; 2026-08-06</p>
+  <p>Full reviews: <code>reviews/review-rubric-walker.md</code> &middot; <code>reviews/review-tech-verification.md</code> &middot; <code>reviews/review-adversarial.md</code></p>
+</div>
+
+</body>
+</html>

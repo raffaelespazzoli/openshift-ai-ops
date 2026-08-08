@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenShift AI Ops — Incidents</title>
+<style>
+/*
+ * EXPERIENCE.md sections governing this screen:
+ *   - Information Architecture: Incidents surface (default landing, firing alerts grouped by RCE)
+ *   - Component Patterns: Incident list (DataList expandable), Firing/Resolved toggle (ToggleGroup),
+ *     Severity filter (Select checkbox), Nav approval badge (NotificationBadge)
+ *   - State Patterns: Cold app load, Alert storm (many RCEs)
+ *   - Voice and Tone: factual, short, status-first
+ *   - Key Flows: Flow 3 — Alert storm correlation
+ *
+ * DESIGN.md references:
+ *   - Colors: status colors (danger, warning, success, info), nav-badge (warning variant)
+ *   - Layout: masthead + sidebar matching Console shell
+ *   - Components: DataList, ToggleGroup, Select, Label (compact), NotificationBadge
+ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: "Red Hat Text", system-ui, -apple-system, sans-serif;
+  background: #151515;
+  color: #e0e0e0;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* --- Masthead --- */
+.masthead {
+  background: #1b1d21;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  border-bottom: 1px solid #333;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+}
+.masthead-logo {
+  font-family: "Red Hat Display", system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.01em;
+}
+
+/* --- Sidebar --- */
+.sidebar {
+  width: 240px;
+  background: #1b1d21;
+  position: fixed;
+  top: 56px;
+  left: 0;
+  bottom: 0;
+  border-right: 1px solid #333;
+  padding: 16px 0;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 24px;
+  color: #c7c7c7;
+  font-size: 14px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+.nav-item.active {
+  color: #fff;
+  background: rgba(255,255,255,0.06);
+  border-left-color: #06c;
+}
+.nav-item:hover:not(.active) {
+  background: rgba(255,255,255,0.03);
+}
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #F0AB00;
+  color: #1b1d21;
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  padding: 0 5px;
+  margin-left: 8px;
+}
+
+/* --- Main content --- */
+.main {
+  margin-left: 240px;
+  margin-top: 56px;
+  padding: 24px 32px;
+}
+.page-title {
+  font-family: "Red Hat Display", system-ui, sans-serif;
+  font-size: 24px;
+  font-weight: 400;
+  color: #fff;
+  margin-bottom: 20px;
+}
+
+/* --- Toolbar --- */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #333;
+}
+.toggle-group {
+  display: flex;
+  border: 1px solid #444;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.toggle-btn {
+  padding: 6px 16px;
+  font-size: 14px;
+  background: transparent;
+  color: #aaa;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.toggle-btn.active {
+  background: #06c;
+  color: #fff;
+}
+.filter-dropdown {
+  padding: 6px 12px;
+  font-size: 14px;
+  background: #1f1f1f;
+  color: #e0e0e0;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-family: inherit;
+  cursor: pointer;
+  appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23aaa'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+/* --- DataList --- */
+.datalist {
+  border: 1px solid #333;
+  border-radius: 4px;
+  background: #1f1f1f;
+}
+.rce-group {
+  border-bottom: 1px solid #333;
+}
+.rce-group:last-child {
+  border-bottom: none;
+}
+.rce-header {
+  display: flex;
+  align-items: center;
+  padding: 14px 20px;
+  cursor: pointer;
+  gap: 12px;
+}
+.rce-header:hover {
+  background: rgba(255,255,255,0.03);
+}
+.expand-icon {
+  font-size: 12px;
+  color: #888;
+  width: 16px;
+  flex-shrink: 0;
+}
+.rce-label {
+  font-size: 15px;
+  font-weight: 500;
+  color: #fff;
+  flex: 1;
+}
+.rce-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: #aaa;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.badge-critical { background: rgba(201,25,11,0.18); color: #e74c3c; border: 1px solid rgba(201,25,11,0.35); }
+.badge-warning  { background: rgba(240,171,0,0.14); color: #F0AB00; border: 1px solid rgba(240,171,0,0.30); }
+.badge-info     { background: rgba(0,102,204,0.14); color: #73bcf7; border: 1px solid rgba(0,102,204,0.30); }
+
+.alert-count {
+  font-size: 13px;
+  color: #aaa;
+}
+.time-ago {
+  font-size: 13px;
+  color: #888;
+}
+
+/* --- Expanded alert rows --- */
+.alert-rows {
+  border-top: 1px solid #2a2a2a;
+  background: #1a1a1a;
+}
+.alert-row {
+  display: grid;
+  grid-template-columns: 36px 1fr 90px 80px 1fr;
+  align-items: center;
+  padding: 10px 20px 10px 36px;
+  gap: 12px;
+  font-size: 13px;
+  border-bottom: 1px solid #252525;
+}
+.alert-row:last-child {
+  border-bottom: none;
+}
+.alert-row-icon {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  justify-self: center;
+}
+.dot-critical { background: #C9190B; }
+.dot-warning  { background: #F0AB00; }
+.alert-name {
+  color: #73bcf7;
+  font-weight: 500;
+  cursor: pointer;
+}
+.alert-name:hover {
+  text-decoration: underline;
+}
+.alert-severity {
+  font-size: 12px;
+}
+.alert-time {
+  color: #888;
+  font-size: 12px;
+}
+.pipeline-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #aaa;
+}
+.pipeline-stage-label {
+  font-weight: 500;
+}
+.stage-awaiting { color: #F0AB00; }
+.stage-active   { color: #06c; }
+.stage-completed { color: #3E8635; }
+</style>
+</head>
+<body>
+
+<!-- Masthead -->
+<header class="masthead">
+  <span class="masthead-logo">OpenShift AI Ops</span>
+</header>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="nav-item active">
+    Incidents
+    <span class="nav-badge">1</span>
+  </div>
+  <div class="nav-item">
+    Statistics
+  </div>
+</nav>
+
+<!-- Main content -->
+<main class="main">
+  <h1 class="page-title">Incidents</h1>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="toggle-group">
+      <button class="toggle-btn active">Firing</button>
+      <button class="toggle-btn">Resolved</button>
+    </div>
+    <select class="filter-dropdown">
+      <option>All severities</option>
+      <option>Critical</option>
+      <option>Warning</option>
+      <option>Info</option>
+    </select>
+  </div>
+
+  <!-- DataList -->
+  <div class="datalist">
+
+    <!-- RCE Group 1 — expanded -->
+    <div class="rce-group">
+      <div class="rce-header">
+        <span class="expand-icon">&#9660;</span>
+        <span class="rce-label">etcd fsync latency</span>
+        <div class="rce-meta">
+          <span class="alert-count">3 alerts</span>
+          <span class="badge badge-critical">critical</span>
+          <span class="time-ago">8m ago</span>
+        </div>
+      </div>
+      <div class="alert-rows">
+        <div class="alert-row">
+          <span class="alert-row-icon dot-critical"></span>
+          <span class="alert-name">etcdHighFsyncDurations</span>
+          <span class="badge badge-critical alert-severity">critical</span>
+          <span class="alert-time">8m ago</span>
+          <span class="pipeline-status">
+            Pipeline:
+            <span class="pipeline-stage-label stage-awaiting">Remediation (awaiting)</span>
+          </span>
+        </div>
+        <div class="alert-row">
+          <span class="alert-row-icon dot-warning"></span>
+          <span class="alert-name">etcdSlowDiskIO</span>
+          <span class="badge badge-warning alert-severity">warning</span>
+          <span class="alert-time">9m ago</span>
+          <span class="pipeline-status">
+            Pipeline:
+            <span class="pipeline-stage-label stage-active">Diagnosis (active)</span>
+          </span>
+        </div>
+        <div class="alert-row">
+          <span class="alert-row-icon dot-warning"></span>
+          <span class="alert-name">etcdBackendCommitDuration</span>
+          <span class="badge badge-warning alert-severity">warning</span>
+          <span class="alert-time">9m ago</span>
+          <span class="pipeline-status">
+            Pipeline:
+            <span class="pipeline-stage-label stage-completed">Triage (completed)</span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- RCE Group 2 — collapsed -->
+    <div class="rce-group">
+      <div class="rce-header">
+        <span class="expand-icon">&#9654;</span>
+        <span class="rce-label">PVC stuck pending</span>
+        <div class="rce-meta">
+          <span class="alert-count">1 alert</span>
+          <span class="badge badge-warning">warning</span>
+          <span class="time-ago">24m ago</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+</body>
+</html>

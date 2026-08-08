@@ -1,0 +1,67 @@
+installation:
+  version: 6.10.0
+  installDate: 2026-08-01T05:05:16.449Z
+  lastUpdated: 2026-08-01T05:05:16.449Z
+modules:
+  - name: core
+    version: 6.10.0
+    installDate: 2026-08-01T05:05:16.028Z
+    lastUpdated: 2026-08-01T05:05:16.429Z
+    source: built-in
+    npmPackage: null
+    repoUrl: null
+  - name: bmm
+    version: 6.10.0
+    installDate: 2026-08-01T05:05:16.005Z
+    lastUpdated: 2026-08-01T05:05:16.430Z
+    source: built-in
+    npmPackage: null
+    repoUrl: null
+  - name: bmad-loop
+    version: v0.9.0
+    installDate: 2026-08-01T05:05:16.041Z
+    lastUpdated: 2026-08-01T05:05:16.434Z
+    source: external
+    npmPackage: null
+    repoUrl: https://github.com/bmad-code-org/bmad-loop
+    channel: stable
+    sha: 72551742617b4e1c9cb72d2038dc67ce973f7eea
+  - name: bmb
+    version: v2.1.0
+    installDate: 2026-08-01T05:05:16.076Z
+    lastUpdated: 2026-08-01T05:05:16.438Z
+    source: external
+    npmPackage: bmad-builder
+    repoUrl: https://github.com/bmad-code-org/bmad-builder
+    channel: stable
+    sha: d54981a8ba3b990148256455ccf4e6c1cb4918f0
+  - name: cis
+    version: v0.2.1
+    installDate: 2026-08-01T05:05:16.092Z
+    lastUpdated: 2026-08-01T05:05:16.443Z
+    source: external
+    npmPackage: bmad-creative-intelligence-suite
+    repoUrl: https://github.com/bmad-code-org/bmad-module-creative-intelligence-suite
+    channel: stable
+    sha: 07a8dd03d196a762f21c241d985293fe5b0f90e7
+  - name: wds
+    version: v0.4.3
+    installDate: 2026-08-01T05:05:16.203Z
+    lastUpdated: 2026-08-01T05:05:16.448Z
+    source: external
+    npmPackage: bmad-wds
+    repoUrl: https://github.com/bmad-code-org/bmad-method-wds-expansion
+    channel: stable
+    sha: cc16f09fcfab26d35635af1491f36a38a8431c8d
+  - name: tea
+    version: v1.19.1
+    installDate: 2026-08-01T05:05:16.309Z
+    lastUpdated: 2026-08-01T05:05:16.449Z
+    source: external
+    npmPackage: bmad-method-test-architecture-enterprise
+    repoUrl: https://github.com/bmad-code-org/bmad-method-test-architecture-enterprise
+    channel: stable
+    sha: 74cf6e6adf5a6f46614788f184f340ea58336157
+ides:
+  - claude-code
+  - cursor

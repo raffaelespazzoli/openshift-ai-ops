@@ -1,0 +1,106 @@
+# generated: 2026-08-08
+# last_updated: 2026-08-08
+# project: openshift-ai-ops
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; sprint-status surfaces open ones
+
+generated: 2026-08-08
+last_updated: 2026-08-08
+project: openshift-ai-ops
+project_key: NOKEY
+tracking_system: file-system
+story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+development_status:
+  # Epic 1: Project Foundation & Alert Intake
+  epic-1: backlog
+  1-1-receive-and-acknowledge-alertmanager-webhooks: backlog
+  1-2-alert-deduplication-and-storm-correlation: backlog
+  1-3-priority-queue-and-pipeline-dispatch: backlog
+  1-4-rest-api-foundation-with-real-time-events: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: AI Diagnosis Pipeline
+  epic-2: backlog
+  2-1-langgraph-diagnosis-pipeline-and-mcp-integration: backlog
+  2-2-orchestrator-agent-and-runbook-enriched-diagnosis: backlog
+  2-3-rhokp-learning-store-and-agentic-skills-integration: backlog
+  2-4-diagnosis-skeptic-and-immutable-handoff: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: Remediation, Execution & Outcome
+  epic-3: backlog
+  3-1-remediation-planner-and-structured-plan: backlog
+  3-2-remediation-skeptic: backlog
+  3-3-dry-run-pre-flight-and-policy-gate: backlog
+  3-4-human-approval-workflow-backend-api: backlog
+  3-5-serialized-execution-outcome-observation-and-rollback: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Learning Store & Fast-Path
+  epic-4: backlog
+  4-1-case-record-persistence-and-vector-embeddings: backlog
+  4-2-temporal-decay-and-version-relevance: backlog
+  4-3-fast-path-bypass-for-known-patterns: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: Operational Web UI & Approval Workflow
+  epic-5: backlog
+  5-1-frontend-scaffolding-and-app-shell: backlog
+  5-2-incidents-list-view: backlog
+  5-3-incident-detail-view-and-pipeline-visualization: backlog
+  5-4-approval-workflow-and-real-time-updates: backlog
+  5-5-statistics-dashboard: backlog
+  5-6-keyboard-shortcuts-and-accessibility: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: LLM Configuration & Optimization
+  epic-6: backlog
+  6-1-per-agent-llm-configuration-and-layered-override: backlog
+  6-2-llm-resilience-and-graceful-degradation: backlog
+  6-3-complexity-based-model-routing: backlog
+  6-4-semantic-cache-and-policy-matrix-configuration: backlog
+  epic-6-retrospective: optional
+
+  # Epic 7: Eval Harness & Trust Building
+  epic-7: backlog
+  7-1-simulated-alert-injection: backlog
+  7-2-accuracy-measurement-and-domain-scoring: backlog
+  7-3-auto-remediation-trust-gate: backlog
+  epic-7-retrospective: optional

@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenShift AI Ops — Statistics</title>
+<style>
+/*
+ * EXPERIENCE.md sections governing this screen:
+ *   - Information Architecture: Statistics surface (operational pulse + reporting)
+ *   - Component Patterns: Stats cards (Card compact — 5 tiles with trend indicators),
+ *     Stats charts (PatternFly Charts line/area with time-range selector)
+ *   - State Patterns: Statistics empty, Statistics loading
+ *   - Voice and Tone: factual, short, status-first
+ *   - Key Flows: Flow 2 — Weekly review (Marco, ops team lead)
+ *
+ * DESIGN.md references:
+ *   - Layout: responsive grid for Statistics view, single-column below lg
+ *   - Components: Card, PatternFly Charts (line, area)
+ *   - Colors: status colors for trend indicators
+ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: "Red Hat Text", system-ui, -apple-system, sans-serif;
+  background: #151515;
+  color: #e0e0e0;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* --- Masthead --- */
+.masthead {
+  background: #1b1d21;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  border-bottom: 1px solid #333;
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+}
+.masthead-logo {
+  font-family: "Red Hat Display", system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* --- Sidebar --- */
+.sidebar {
+  width: 240px;
+  background: #1b1d21;
+  position: fixed;
+  top: 56px; left: 0; bottom: 0;
+  border-right: 1px solid #333;
+  padding: 16px 0;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 24px;
+  color: #c7c7c7;
+  font-size: 14px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+.nav-item.active {
+  color: #fff;
+  background: rgba(255,255,255,0.06);
+  border-left-color: #06c;
+}
+
+/* --- Main --- */
+.main {
+  margin-left: 240px;
+  margin-top: 56px;
+  padding: 24px 32px;
+}
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.page-title {
+  font-family: "Red Hat Display", system-ui, sans-serif;
+  font-size: 24px;
+  font-weight: 400;
+  color: #fff;
+}
+.time-selector {
+  padding: 6px 12px;
+  font-size: 14px;
+  background: #1f1f1f;
+  color: #e0e0e0;
+  border: 1px solid #444;
+  border-radius: 4px;
+  font-family: inherit;
+  cursor: pointer;
+  appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23aaa'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+/* --- Metric cards --- */
+.cards-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+  margin-bottom: 32px;
+}
+.metric-card {
+  background: #1f1f1f;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 20px;
+}
+.metric-label {
+  font-size: 12px;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+.metric-value {
+  font-family: "Red Hat Display", system-ui, sans-serif;
+  font-size: 32px;
+  font-weight: 500;
+  color: #fff;
+  margin-bottom: 6px;
+}
+.metric-trend {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.trend-up   { color: #3E8635; }
+.trend-down { color: #3E8635; }
+.trend-flat { color: #aaa; }
+.trend-arrow {
+  font-size: 14px;
+}
+
+/* --- Chart areas --- */
+.charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.chart-card {
+  background: #1f1f1f;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 20px;
+}
+.chart-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  margin-bottom: 16px;
+}
+.chart-placeholder {
+  height: 220px;
+  border: 1px dashed #444;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 12px 16px;
+  position: relative;
+}
+.chart-y-axis {
+  position: absolute;
+  left: 16px;
+  top: 12px;
+  bottom: 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #666;
+}
+.chart-x-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #666;
+  margin-top: 8px;
+}
+
+/* --- Chart mock lines (pure CSS) --- */
+.chart-line-area {
+  position: absolute;
+  top: 16px;
+  left: 48px;
+  right: 16px;
+  bottom: 36px;
+  overflow: hidden;
+}
+.mock-line {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+}
+.mock-line svg {
+  width: 100%;
+  height: 100%;
+}
+</style>
+</head>
+<body>
+
+<!-- Masthead -->
+<header class="masthead">
+  <span class="masthead-logo">OpenShift AI Ops</span>
+</header>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="nav-item">Incidents</div>
+  <div class="nav-item active">Statistics</div>
+</nav>
+
+<!-- Main -->
+<main class="main">
+
+  <div class="page-header">
+    <h1 class="page-title">Statistics</h1>
+    <select class="time-selector">
+      <option selected>Last 7 days</option>
+      <option>Last 24 hours</option>
+      <option>Last 30 days</option>
+    </select>
+  </div>
+
+  <!-- Metric cards -->
+  <div class="cards-row">
+    <div class="metric-card">
+      <div class="metric-label">Total incidents</div>
+      <div class="metric-value">23</div>
+      <div class="metric-trend trend-up">
+        <span class="trend-arrow">&#9650;</span> from 19 last week
+      </div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Auto-resolved</div>
+      <div class="metric-value">78%</div>
+      <div class="metric-trend trend-up">
+        <span class="trend-arrow">&#9650;</span> from 71%
+      </div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Success rate</div>
+      <div class="metric-value">91%</div>
+      <div class="metric-trend trend-flat">
+        <span class="trend-arrow">&#9654;</span> stable
+      </div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">MTTR</div>
+      <div class="metric-value">4m 12s</div>
+      <div class="metric-trend trend-down">
+        <span class="trend-arrow">&#9660;</span> from 6m 34s
+      </div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Fast-path</div>
+      <div class="metric-value">34%</div>
+      <div class="metric-trend trend-up">
+        <span class="trend-arrow">&#9650;</span> from 22%
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-title">Alerts over time</div>
+      <div class="chart-placeholder">
+        <div class="chart-y-axis">
+          <span>12</span>
+          <span>8</span>
+          <span>4</span>
+          <span>0</span>
+        </div>
+        <div class="chart-line-area">
+          <div class="mock-line">
+            <svg viewBox="0 0 400 160" preserveAspectRatio="none">
+              <polyline
+                points="0,120 57,100 114,60 171,80 228,40 285,70 342,50 400,30"
+                fill="none"
+                stroke="#73bcf7"
+                stroke-width="2"
+              />
+              <polyline
+                points="0,140 57,130 114,100 171,110 228,80 285,90 342,75 400,60"
+                fill="none"
+                stroke="#3E8635"
+                stroke-width="2"
+                stroke-dasharray="4,3"
+              />
+            </svg>
+          </div>
+        </div>
+        <div class="chart-x-axis">
+          <span>Mon</span>
+          <span>Tue</span>
+          <span>Wed</span>
+          <span>Thu</span>
+          <span>Fri</span>
+          <span>Sat</span>
+          <span>Sun</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-title">Mean Time to Resolution</div>
+      <div class="chart-placeholder">
+        <div class="chart-y-axis">
+          <span>8m</span>
+          <span>6m</span>
+          <span>4m</span>
+          <span>2m</span>
+        </div>
+        <div class="chart-line-area">
+          <div class="mock-line">
+            <svg viewBox="0 0 400 160" preserveAspectRatio="none">
+              <polygon
+                points="0,40 57,60 114,50 171,80 228,70 285,100 342,110 400,120 400,160 0,160"
+                fill="rgba(62,134,53,0.15)"
+                stroke="none"
+              />
+              <polyline
+                points="0,40 57,60 114,50 171,80 228,70 285,100 342,110 400,120"
+                fill="none"
+                stroke="#3E8635"
+                stroke-width="2"
+              />
+            </svg>
+          </div>
+        </div>
+        <div class="chart-x-axis">
+          <span>Mon</span>
+          <span>Tue</span>
+          <span>Wed</span>
+          <span>Thu</span>
+          <span>Fri</span>
+          <span>Sat</span>
+          <span>Sun</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+</body>
+</html>
