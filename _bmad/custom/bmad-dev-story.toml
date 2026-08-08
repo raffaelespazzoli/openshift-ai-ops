@@ -4,6 +4,29 @@
 
 [workflow]
 
+persistent_facts = [
+  """Dev Agent Record — MANDATORY updates (EVERY story, no exceptions):
+The "Dev Agent Record" section in the story file MUST be fully populated before
+the story is marked for review. Specifically:
+
+1. **Agent Model Used** — Record the exact model name/version used for implementation
+   (e.g. "Claude Opus 4.6 (via Cursor)", "GPT-5.4"). This field MUST be set early
+   in implementation, not left blank or as a placeholder.
+
+2. **Debug Log References** — Document any environment issues, dependency conflicts,
+   version mismatches, or other gotchas encountered during development. Each entry
+   should be actionable for future developers hitting the same issue.
+
+3. **Completion Notes List** — One bullet per task summarizing what was ACTUALLY
+   implemented (not just "Task 1 done"). Include test counts, key decisions, and
+   anything a reviewer needs to know.
+
+4. **File List** — Every new, modified, or deleted file with its action (NEW/MODIFIED/DELETED)
+   and a brief description. Paths relative to repo root.
+
+If any of these are empty or missing at completion time, the DoD check MUST fail.""",
+]
+
 # Pre-flight gates: run after greeting, before story execution begins.
 # The agent interprets these as sequential instructions.
 activation_steps_append = [
@@ -26,9 +49,19 @@ Otherwise output: ✅ Test suite passes — baseline established.""",
 ]
 
 # Post-completion gate: executed at the final step, after story is marked for review.
-on_complete = """GATE — Post-completion regression check.
-Run the same full test suite used in the pre-flight baseline.
-If any tests fail:
-  Output: 🚫 Integration/test suite is failing after story implementation.
-  HALT: "Tests must pass before the story can be marked for review. Fix regressions."
-Otherwise output: ✅ Test suite passes — no regressions introduced."""
+on_complete = """GATE — Post-completion regression check and Dev Agent Record verification.
+1. Run the same full test suite used in the pre-flight baseline.
+   If any tests fail:
+     Output: 🚫 Integration/test suite is failing after story implementation.
+     HALT: "Tests must pass before the story can be marked for review. Fix regressions."
+   Otherwise output: ✅ Test suite passes — no regressions introduced.
+
+2. Verify the Dev Agent Record section is complete:
+   - "Agent Model Used" is populated (not empty, not placeholder)
+   - "Debug Log References" has at least one entry (or explicitly states "No issues encountered")
+   - "Completion Notes List" has one entry per completed task
+   - "File List" lists every new/modified/deleted file
+   If any are missing:
+     Output: 🚫 Dev Agent Record is incomplete.
+     HALT: "Dev Agent Record must be fully populated before marking for review."
+   Otherwise output: ✅ Dev Agent Record is complete."""

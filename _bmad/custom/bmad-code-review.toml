@@ -1,0 +1,60 @@
+# Team overrides for bmad-code-review workflow.
+# Committed to the repo — applies to every developer on the project.
+# Survives BMad framework upgrades (never touched by the installer).
+#
+# Born from Epic 1 retrospective: 19 findings were fixed in code but
+# left unchecked in story files because neither the review model nor
+# the fix model was tracked, and checkbox updates were not enforced.
+
+[workflow]
+
+persistent_facts = [
+  """RULE 1 — Code Review Record section (MANDATORY when {spec_file} is set):
+After writing findings to the story file, ensure a '## Code Review Record'
+section exists (create it if missing). It MUST contain:
+
+  ### Review Round <N> — <date>
+  **Review model:** <exact model name/version that performed this review>
+  **Fix model:** <to be filled when fixes are applied>
+
+  #### Findings
+  - [ ] [Review][Patch] <Title> [`<file>:<line>`] — <detail>
+  - [ ] [Review][Decision] <Title> — <detail>
+  - [x] [Review][Defer] <Title> — deferred, <reason>
+
+When fixes are applied (by this agent or a subsequent dev-story agent),
+update the header:
+  **Fix model:** <exact model name/version that applied the fixes>
+
+On re-reviews, increment the round number and append a new
+'### Review Round <N>' subsection — do NOT overwrite prior rounds.
+Prior rounds are the audit trail.""",
+
+  """RULE 2 — Finding checkbox discipline (MANDATORY, no exceptions):
+Every finding's checkbox MUST reflect the actual state of the code:
+
+- When a finding is first documented: `- [ ]` (unchecked)
+- When a fix is applied AND verified (tests pass): update to `- [x]`
+  and append: **Fixed**: <one-line summary of what was done>
+- When a fix is applied but verification fails (tests break): revert
+  the fix, leave as `- [ ]`, and append: **Attempted**: <what failed>
+- When deferred: `- [x] [Review][Defer]` with reason
+
+On RE-REVIEWS (review-fix cycles), before writing new findings:
+1. Scan all prior-round `[ ]` findings against the current code
+2. If the code now fixes a prior finding: mark `[x]` with **Fixed** note
+3. If partially fixed: leave `[ ]`, append **Partial**: <what remains>
+4. If untouched: leave `[ ]` unchanged
+
+NEVER leave a finding as `[ ]` when the corresponding code fix exists.
+NEVER mark `[x]` without verifying the fix actually works.""",
+]
+
+on_complete = """GATE — Checkbox-to-code consistency check.
+Before finalizing, scan every finding in the Code Review Record:
+- For each `[ ]` finding: verify the code still has the issue. If the code
+  was actually fixed, update to `[x]` with a **Fixed** note now.
+- For each `[x]` finding: verify the fix note exists.
+- Verify 'Review model' is populated for every review round.
+- Verify 'Fix model' is populated if any fixes were applied this session.
+If any inconsistency is found, fix it before completing."""
