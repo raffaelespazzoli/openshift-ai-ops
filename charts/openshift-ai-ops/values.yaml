@@ -13,6 +13,14 @@ backend:
       memory: "512Mi"
       cpu: "500m"
 
+correlation:
+  settlingWindows:
+    critical: 60
+    warning: 300
+    info: 600
+  maxAgeMultiplier: 3
+  sealingCheckIntervalSeconds: 10
+
 postgresql:
   replicaCount: 1
   image:

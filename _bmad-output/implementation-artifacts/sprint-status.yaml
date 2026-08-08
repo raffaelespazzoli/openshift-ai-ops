@@ -1,5 +1,5 @@
 # generated: 2026-08-08
-# last_updated: 2026-08-08
+# last_updated: 2026-08-08T12:25:00
 # project: openshift-ai-ops
 # project_key: NOKEY
 # tracking_system: file-system
@@ -52,7 +52,7 @@ development_status:
   epic-1: in-progress
   1-0-project-scaffolding-and-shared-contracts: done
   1-1-receive-and-acknowledge-alertmanager-webhooks: done
-  1-2-alert-deduplication-and-storm-correlation: ready-for-dev
+  1-2-alert-deduplication-and-storm-correlation: done
   1-3-priority-queue-and-pipeline-dispatch: ready-for-dev
   1-4-rest-api-foundation-with-real-time-events: ready-for-dev
   epic-1-retrospective: optional

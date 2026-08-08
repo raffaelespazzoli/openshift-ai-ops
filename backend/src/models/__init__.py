@@ -7,6 +7,7 @@ All other modules import from here.
 from .alert import Alert, AlertStatus
 from .events import EventBus, EventHandler
 from .incident import Incident, Severity
+from .root_cause_event import CorrelationEvidence, CorrelationLayer, RootCauseEvent
 from .state_machine import (
     TERMINAL_STATES,
     VALID_TRANSITIONS,
@@ -22,12 +23,15 @@ __all__ = [
     "AlertManagerAlert",
     "AlertManagerWebhook",
     "AlertStatus",
+    "CorrelationEvidence",
+    "CorrelationLayer",
     "EventBus",
     "EventHandler",
     "Incident",
     "IncidentState",
     "InvalidTransitionError",
     "initial_state",
+    "RootCauseEvent",
     "Severity",
     "TERMINAL_STATES",
     "VALID_TRANSITIONS",

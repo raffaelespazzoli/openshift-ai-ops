@@ -13,7 +13,9 @@ from pydantic import ValidationError
 
 from ..config.logging import Component, get_logger
 from ..db import create_alert, create_incident, get_pool, record_resolved_alert
+from ..db.correlation import check_dedup, update_dedup_timestamp
 from ..models.webhook import AlertManagerWebhook, WebhookAlertStatus
+from ..pipeline.correlator import process_alert_for_correlation
 
 router = APIRouter()
 logger = get_logger(Component.API)
@@ -30,26 +32,54 @@ def _severity_for_alert(alert) -> str:
 
 
 async def _process_webhook(payload: AlertManagerWebhook) -> None:
-    """Background task: persist alerts and create incidents.
+    """Background task: persist alerts, create incidents, and run correlation.
 
-    Each firing alert creates its own incident (no batching).
-    Story 1.2 handles dedup/correlation — this story must not collapse alerts.
+    Flow per firing alert:
+    1. Dedup check — if duplicate, absorb and skip
+    2. Create incident + persist alert (only if not duplicate)
+    3. Run correlation engine (process_alert_for_correlation)
+
+    Uses a per-fingerprint advisory lock to prevent race conditions where
+    concurrent duplicates both pass the dedup check before either inserts.
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
         for alert in payload.alerts:
             if alert.status == WebhookAlertStatus.FIRING:
-                severity = _severity_for_alert(alert)
-                incident = await create_incident(conn, severity=severity)
-                await create_alert(
-                    conn,
-                    incident_id=incident["id"],
-                    fingerprint=alert.fingerprint,
-                    labels=dict(alert.labels),
-                    annotations=dict(alert.annotations),
-                    status=alert.status.value,
-                    fired_at=alert.starts_at,
-                )
+                async with conn.transaction():
+                    lock_key = hash(alert.fingerprint) & 0x7FFFFFFFFFFFFFFF
+                    await conn.execute(
+                        "SELECT pg_advisory_xact_lock($1)", lock_key
+                    )
+
+                    is_dup = await check_dedup(conn, alert.fingerprint)
+                    if is_dup:
+                        await update_dedup_timestamp(conn, alert.fingerprint)
+                        logger.info(
+                            "Duplicate alert absorbed",
+                            extra={"fingerprint": alert.fingerprint},
+                        )
+                        continue
+
+                    severity = _severity_for_alert(alert)
+                    incident = await create_incident(conn, severity=severity)
+                    alert_row = await create_alert(
+                        conn,
+                        incident_id=incident["id"],
+                        fingerprint=alert.fingerprint,
+                        labels=dict(alert.labels),
+                        annotations=dict(alert.annotations),
+                        status=alert.status.value,
+                        fired_at=alert.starts_at,
+                    )
+                    await process_alert_for_correlation(
+                        conn,
+                        alert_id=alert_row["id"],
+                        incident_id=incident["id"],
+                        fingerprint=alert.fingerprint,
+                        labels=dict(alert.labels),
+                        severity=severity,
+                    )
             elif alert.status == WebhookAlertStatus.RESOLVED:
                 await record_resolved_alert(
                     conn,
