@@ -201,6 +201,77 @@ Teams validate diagnostic accuracy on simulated alert scenarios processed throug
 
 The system receives AlertManager webhooks, deduplicates storm traffic, correlates related alerts into Root-Cause Events via a deterministic five-layer correlator, and maintains a PostgreSQL-backed Priority Queue for downstream processing. This epic establishes the monorepo structure, shared types module, database schema, canonical incident state machine, Helm chart skeleton, REST API scaffolding, and structured logging — the foundation all subsequent epics build on.
 
+### Stories
+
+| Story | Title | Dependency | Summary |
+|-------|-------|------------|---------|
+| 1.0 | Project Scaffolding & Shared Contracts | None | Monorepo layout, shared types, DB foundation, Helm skeleton, test infrastructure |
+| 1.1 | Receive and Acknowledge AlertManager Webhooks | 1.0 | Webhook endpoint with 500ms SLA, payload validation, incident creation |
+| 1.2 | Alert Deduplication and Storm Correlation | 1.1 | Five-layer deterministic correlator, settling windows, RCE sealing |
+| 1.3 | Priority Queue and Pipeline Dispatch | 1.2 | PostgreSQL-backed priority queue, dequeue, TTL, resolved cancellation |
+| 1.4 | REST API Foundation with Real-Time Events | 1.1 | REST endpoints, SSE, OAuth, audit logging |
+
+### Story 1.0: Project Scaffolding & Shared Contracts
+
+As a developer,
+I want the monorepo structure, shared type contracts, database foundation, and test infrastructure established,
+So that all subsequent stories have a working development environment and consistent patterns to build on.
+
+**Acceptance Criteria:**
+
+**Given** the project repository is initialized
+**When** a developer inspects the directory structure
+**Then** the monorepo layout matches AD-14: `backend/src/{api,pipeline,agents,models,knowledge,db,config}`, `backend/tests/`, `frontend/src/`, `charts/openshift-ai-ops/`, `docs/`
+
+**Given** the Python project is configured
+**When** a developer runs `pip install -e .` in `backend/`
+**Then** all core dependencies are installed (FastAPI, LangGraph, Pydantic, asyncpg, prometheus-client)
+**And** dev dependencies include pytest, testcontainers, httpx (for TestClient)
+
+**Given** the shared types module at `backend/src/models/`
+**When** inspected
+**Then** it defines the Alert and Incident Pydantic models with the canonical incident state machine (`received → correlating → queued → diagnosing → diagnosed → awaiting_approval → executing → observing → resolved | failed`) and a state-machine transition function that all state writes must use
+
+**Given** the state machine transition function
+**When** an invalid transition is attempted (e.g., `received → executing`)
+**Then** the function raises a typed error and does not modify state
+
+**Given** the PostgreSQL database
+**When** migrations run
+**Then** the application schema (incidents, alerts, audit_log) is created separately from the `langgraph_*` schema domain per AD-3
+**And** the migration tooling (Alembic or equivalent) is configured and documented
+
+**Given** the backend application starts
+**When** it processes any request or event
+**Then** all log output is structured JSON to stdout with fields: `timestamp`, `level`, `component` (api|pipeline|agent|db|knowledge), and `request_id` or `incident_id` for correlation
+
+**Given** the backend is running
+**When** a client calls `GET /healthz`
+**Then** the endpoint returns HTTP 200 with a health status indicating database connectivity
+
+**Given** the Helm chart skeleton
+**When** `helm template` is run
+**Then** it renders a backend Deployment and a PostgreSQL StatefulSet with PVC-backed storage in a single namespace
+
+**Given** the pytest configuration
+**When** a developer inspects it
+**Then** test markers are defined for `unit`, `db`, `api`, and `pipeline`
+**And** `backend/tests/` mirrors `backend/src/` layout (e.g., `tests/models/`, `tests/api/`, `tests/db/`)
+
+**Given** the test infrastructure
+**When** a developer runs `pytest -m db`
+**Then** a testcontainers fixture spins up PostgreSQL 18 + pgvector, runs migrations, and provides a clean database session per test
+**And** the fixture is defined in `conftest.py` for reuse across all test modules
+
+**Given** the test infrastructure
+**When** a developer runs `pytest -m api`
+**Then** a FastAPI TestClient fixture is available backed by the testcontainers database
+**And** tests can exercise HTTP endpoints end-to-end against a real database
+
+**Given** a developer clones the repository
+**When** they follow the README setup instructions
+**Then** they can start the backend dev server, see the health check pass, and run the test suite (which passes with the scaffolding tests)
+
 ### Story 1.1: Receive and Acknowledge AlertManager Webhooks
 
 As an SRE,
@@ -224,25 +295,13 @@ So that alert data enters the pipeline for processing without impacting AlertMan
 **Then** the system acknowledges with HTTP 200
 **And** the resolved status is recorded for downstream dequeue processing
 
-**Given** the project repository is initialized
-**When** a developer inspects the directory structure
-**Then** the monorepo layout matches AD-14: `backend/src/{api,pipeline,agents,models,knowledge,db,config}`, `backend/tests/`, `frontend/src/`, `charts/openshift-ai-ops/`, `docs/`
+**Given** the webhook endpoint
+**When** load tested with concurrent requests
+**Then** the 500ms acknowledgment SLA holds under burst traffic
 
-**Given** the shared types module at `backend/src/models/`
-**When** inspected
-**Then** it defines the Alert and Incident Pydantic models with the canonical incident state machine (`received → correlating → queued → diagnosing → diagnosed → awaiting_approval → executing → observing → resolved | failed`) and a state-machine transition function that all state writes must use
-
-**Given** the PostgreSQL database
-**When** migrations run
-**Then** the application schema (incidents, alerts) is created separately from the `langgraph_*` schema domain per AD-3
-
-**Given** the backend application starts
-**When** it processes any request or event
-**Then** all log output is structured JSON to stdout with fields: `timestamp`, `level`, `component` (api|pipeline|agent|db|knowledge), and `request_id` or `incident_id` for correlation
-
-**Given** the Helm chart skeleton
-**When** `helm template` is run
-**Then** it renders a backend Deployment and a PostgreSQL StatefulSet with PVC-backed storage in a single namespace
+**Given** a valid firing alert is received
+**When** the incident is created
+**Then** the alert fingerprint, labels, annotations, and firing timestamp are persisted alongside the incident record
 
 ### Story 1.2: Alert Deduplication and Storm Correlation
 

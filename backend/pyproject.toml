@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "openshift-ai-ops"
+version = "0.1.0"
+description = "AI-powered operations assistant for OpenShift"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi~=0.141.1",
+    "langgraph~=1.2",
+    "langgraph-checkpoint-postgres>=2.0",
+    "pydantic~=2.0",
+    "asyncpg",
+    "psycopg[binary]>=3.0,<4.0",
+    "psycopg-pool",
+    "prometheus-client~=0.25.0",
+    "alembic",
+    "uvicorn",
+    "python-json-logger>=3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "testcontainers[postgres]",
+    "httpx",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "unit: Unit tests with mocked dependencies",
+    "db: Database integration tests (requires testcontainers)",
+    "api: API integration tests (requires testcontainers)",
+    "pipeline: Pipeline integration tests",
+]

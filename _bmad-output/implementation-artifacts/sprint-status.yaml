@@ -50,7 +50,7 @@ story_location: "{project-root}/_bmad-output/implementation-artifacts"
 development_status:
   # Epic 1: Project Foundation & Alert Intake
   epic-1: in-progress
-  1-0-project-scaffolding-and-shared-contracts: ready-for-dev
+  1-0-project-scaffolding-and-shared-contracts: done
   1-1-receive-and-acknowledge-alertmanager-webhooks: ready-for-dev
   1-2-alert-deduplication-and-storm-correlation: ready-for-dev
   1-3-priority-queue-and-pipeline-dispatch: ready-for-dev

@@ -1,0 +1,36 @@
+backend:
+  replicaCount: 1
+  image:
+    repository: quay.io/openshift-ai-ops/backend
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  port: 8000
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+postgresql:
+  replicaCount: 1
+  image:
+    repository: pgvector/pgvector
+    tag: "pg18"
+    pullPolicy: IfNotPresent
+  port: 5432
+  credentials:
+    username: postgres
+    password: ""
+    database: openshift_ai_ops
+  storage:
+    size: 10Gi
+    storageClassName: ""
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"

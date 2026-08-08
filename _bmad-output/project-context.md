@@ -18,7 +18,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 | Component | Technology | Version | Notes |
 |-----------|-----------|---------|-------|
-| Backend language | Python | ≥3.10 | LangGraph requirement |
+| Backend language | Python | ≥3.13 | LangGraph requirement |
 | Agent framework | LangGraph | 1.2.x | Checkpoint persistence to PostgreSQL |
 | API framework | FastAPI | 0.141.x | REST + SSE + webhook receiver |
 | Database | PostgreSQL | 18.x | Structured data + LangGraph checkpoints |
@@ -114,11 +114,31 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Mock API responses** — use MSW (Mock Service Worker) or equivalent to intercept REST/SSE at the network level. Never mock `fetch` directly.
 - **PatternFly component usage is NOT tested** — don't assert that a specific PF component is rendered. Assert visible text, accessible roles, and user interactions.
 
+#### Integration Test Strategy
+
+Five test layers, each with its own infrastructure and trigger:
+
+| Layer | What | Infrastructure | When Built |
+|-------|------|---------------|------------|
+| Unit | Logic, contracts, pure functions | Mocked dependencies | Every story |
+| DB integration | Migrations, queries, locks, pgvector | Testcontainers (PostgreSQL 18 + pgvector) | Fixtures in Story 1.0, each story adds tests |
+| API integration | HTTP endpoints, SSE, auth, audit | FastAPI TestClient + testcontainers | Fixtures in Story 1.0, Story 1.4 adds tests |
+| Pipeline integration | LangGraph orchestration, checkpoints, state flow | Mocked LLM + real PostgreSQL | Story 2.1 (first pipeline story) |
+| MCP integration | Streamable HTTP, canned cluster responses | Mock MCP server | Story 2.1 (first MCP usage) |
+
+- **Unit through MCP integration run in CI on every PR.** They are fast, deterministic, and containerized.
+- **pytest markers** — `unit`, `db`, `api`, `pipeline` to select test layers. Default runs all.
+- **Testcontainers fixture** — shared `conftest.py` fixture spins up PostgreSQL + pgvector, runs migrations, provides clean session per test.
+- **Mock MCP server** — a lightweight Streamable HTTP server returning canned responses, built when Epic 2 introduces MCP usage.
+
+**E2E tests (deferred to post-Epic 3):** Full pipeline with real MCP Servers and real LLM endpoints — nothing mocked. Validates end-to-end plumbing (pod communication, Streamable HTTP, LLM through LangGraph to DB to SSE to browser). Distinct from the eval harness (Epic 7) which scores diagnostic accuracy. Not CI — requires a dedicated test cluster and LLM endpoint. Periodic or manual trigger only.
+
 #### Shared Principles
 
 - **No snapshot tests** — they add noise and break on PF upgrades. Test behavior and contract outputs.
 - **Structured JSON logging in tests** — tests should validate log output structure (component, level, incident_id correlation) for observability-critical paths.
 - **State machine transitions are deterministic** — exhaustively test all valid transitions and verify that invalid transitions throw.
+- **No flaky tests** — every integration test touching PostgreSQL or async must have explicit timeouts and deterministic setup/teardown. If a test can't pass 100 runs consecutively, it doesn't merge.
 
 ### Code Quality & Style Rules
 

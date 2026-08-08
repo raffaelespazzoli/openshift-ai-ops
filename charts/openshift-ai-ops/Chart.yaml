@@ -1,0 +1,6 @@
+apiVersion: v2
+name: openshift-ai-ops
+description: AI-powered operations assistant for OpenShift
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
