@@ -97,6 +97,121 @@ async def create_alert(
     return dict(row)
 
 
+_ACTIVE_STATES = (
+    "received",
+    "correlating",
+    "queued",
+    "diagnosing",
+    "diagnosed",
+    "executing",
+    "observing",
+)
+
+
+async def list_incidents(
+    conn: asyncpg.Connection | asyncpg.Pool,
+    *,
+    statuses: list[str] | None = None,
+    severities: list[str] | None = None,
+    from_time: datetime | None = None,
+    to_time: datetime | None = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> tuple[list[dict], int]:
+    """Query incidents with filtering and pagination.
+
+    Returns (incidents, total_count) for pagination metadata.
+    The 'active' status filter maps to non-terminal pipeline states.
+    """
+    conditions: list[str] = []
+    params: list = []
+    param_idx = 0
+
+    if statuses:
+        expanded_statuses: list[str] = []
+        for s in statuses:
+            if s == "active":
+                expanded_statuses.extend(_ACTIVE_STATES)
+            else:
+                expanded_statuses.append(s)
+        param_idx += 1
+        conditions.append(f"i.state = ANY(${param_idx}::text[])")
+        params.append(expanded_statuses)
+
+    if severities:
+        param_idx += 1
+        conditions.append(f"i.severity = ANY(${param_idx}::text[])")
+        params.append(severities)
+
+    if from_time:
+        param_idx += 1
+        conditions.append(f"i.created_at >= ${param_idx}")
+        params.append(from_time)
+
+    if to_time:
+        param_idx += 1
+        conditions.append(f"i.created_at <= ${param_idx}")
+        params.append(to_time)
+
+    where_clause = ""
+    if conditions:
+        where_clause = "WHERE " + " AND ".join(conditions)
+
+    count_query = f"SELECT COUNT(*) FROM incidents i {where_clause}"
+    total = await conn.fetchval(count_query, *params)
+
+    offset = (page - 1) * page_size
+    param_idx += 1
+    limit_param = param_idx
+    param_idx += 1
+    offset_param = param_idx
+
+    data_query = f"""
+        SELECT i.id, i.state, i.severity, i.created_at, i.updated_at
+        FROM incidents i
+        {where_clause}
+        ORDER BY i.created_at DESC
+        LIMIT ${limit_param} OFFSET ${offset_param}
+    """
+    rows = await conn.fetch(data_query, *params, page_size, offset)
+    return [dict(r) for r in rows], total
+
+
+async def get_incident_detail(
+    conn: asyncpg.Connection | asyncpg.Pool,
+    incident_id: uuid.UUID,
+) -> dict | None:
+    """Get full incident detail including correlated alerts.
+
+    Returns None if the incident does not exist.
+    """
+    incident_row = await conn.fetchrow(
+        """
+        SELECT id, state, severity, created_at, updated_at
+        FROM incidents
+        WHERE id = $1
+        """,
+        incident_id,
+    )
+    if incident_row is None:
+        return None
+
+    alert_rows = await conn.fetch(
+        """
+        SELECT id, fingerprint, labels, annotations, status, fired_at, resolved_at, created_at
+        FROM alerts
+        WHERE incident_id = $1
+        ORDER BY fired_at ASC
+        """,
+        incident_id,
+    )
+
+    result = dict(incident_row)
+    result["alerts"] = [dict(r) for r in alert_rows]
+    result["correlation_evidence"] = {}
+    return result
+
+
 async def record_resolved_alert(
     conn: asyncpg.Connection | asyncpg.Pool,
     fingerprint: str,

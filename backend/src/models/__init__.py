@@ -5,7 +5,16 @@ All other modules import from here.
 """
 
 from .alert import Alert, AlertStatus
-from .events import EventBus, EventHandler
+from .api import (
+    ERROR_INTERNAL,
+    ERROR_NOT_FOUND,
+    ERROR_UNAUTHORIZED,
+    ERROR_VALIDATION,
+    ApiError,
+    ApiMeta,
+    ApiResponse,
+)
+from .events import BusEvent, EventBus, EventNames, SSEEventData
 from .incident import Incident, Severity
 from .root_cause_event import CorrelationEvidence, CorrelationLayer, RootCauseEvent
 from .state_machine import (
@@ -23,15 +32,24 @@ __all__ = [
     "AlertManagerAlert",
     "AlertManagerWebhook",
     "AlertStatus",
+    "ApiError",
+    "ApiMeta",
+    "ApiResponse",
+    "BusEvent",
     "CorrelationEvidence",
     "CorrelationLayer",
+    "ERROR_INTERNAL",
+    "ERROR_NOT_FOUND",
+    "ERROR_UNAUTHORIZED",
+    "ERROR_VALIDATION",
     "EventBus",
-    "EventHandler",
+    "EventNames",
     "Incident",
     "IncidentState",
     "InvalidTransitionError",
     "initial_state",
     "RootCauseEvent",
+    "SSEEventData",
     "Severity",
     "TERMINAL_STATES",
     "VALID_TRANSITIONS",

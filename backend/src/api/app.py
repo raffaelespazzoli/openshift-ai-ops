@@ -6,14 +6,23 @@ import asyncio
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..config.logging import Component, get_logger, request_id_var, setup_logging
 from ..config.settings import get_correlation_settings
 from ..db import close_pool, get_pool
+from ..models.api import ERROR_INTERNAL, ERROR_NOT_FOUND, ERROR_VALIDATION, ApiError
 from ..pipeline.correlator import seal_expired_groups
+from .audit import AuditMiddleware
+from .auth import AuthenticationError, handle_authentication_error
+from .event_bus import get_event_bus
+from .events import router as events_router
 from .health import router as health_router
+from .incidents import router as incidents_router
 from .webhooks import router as webhooks_router
 
 setup_logging()
@@ -49,6 +58,8 @@ async def _background_sealing_sweep() -> None:
 async def lifespan(app: FastAPI):
     """Manage application lifecycle."""
     logger.info("Application starting", extra={"component": "api"})
+    # Initialize the event bus singleton on startup
+    get_event_bus()
     sealing_task = asyncio.create_task(_background_sealing_sweep())
     yield
     sealing_task.cancel()
@@ -79,8 +90,73 @@ def create_app() -> FastAPI:
         response.headers["X-Request-ID"] = req_id
         return response
 
+    app.add_middleware(AuditMiddleware)
+
+    app.add_exception_handler(AuthenticationError, handle_authentication_error)
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_handler(request: Request, exc: RequestValidationError):
+        """Transform FastAPI request validation errors into structured error format."""
+        fields = []
+        for err in exc.errors():
+            fields.append({
+                "field": ".".join(str(loc) for loc in err["loc"]),
+                "message": err.get("msg", "invalid value"),
+            })
+        error = ApiError(
+            error="Validation error",
+            code=ERROR_VALIDATION,
+            detail={"fields": fields},
+        )
+        return JSONResponse(status_code=422, content=error.model_dump(mode="json"))
+
+    @app.exception_handler(ValidationError)
+    async def pydantic_validation_handler(request: Request, exc: ValidationError):
+        """Transform Pydantic validation errors into structured error format."""
+        fields = []
+        for err in exc.errors():
+            fields.append({
+                "field": ".".join(str(loc) for loc in err["loc"]),
+                "message": err.get("msg", "invalid value"),
+            })
+        error = ApiError(
+            error="Validation error",
+            code=ERROR_VALIDATION,
+            detail={"fields": fields},
+        )
+        return JSONResponse(status_code=422, content=error.model_dump(mode="json"))
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+        """Transform HTTP exceptions (404, 405, etc.) into structured error format."""
+        status_to_code = {
+            404: ERROR_NOT_FOUND,
+            405: "METHOD_NOT_ALLOWED",
+        }
+        code = status_to_code.get(exc.status_code, f"HTTP_{exc.status_code}")
+        error = ApiError(
+            error=str(exc.detail) if exc.detail else f"HTTP {exc.status_code}",
+            code=code,
+        )
+        return JSONResponse(status_code=exc.status_code, content=error.model_dump(mode="json"))
+
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        """Catch-all for unhandled exceptions — return structured error."""
+        logger.exception(
+            "Unhandled exception",
+            extra={"path": request.url.path, "method": request.method},
+        )
+        error = ApiError(
+            error="Internal server error",
+            code=ERROR_INTERNAL,
+        )
+        return JSONResponse(status_code=500, content=error.model_dump(mode="json"))
+
     app.include_router(health_router)
     app.include_router(webhooks_router)
+    app.include_router(incidents_router)
+    app.include_router(events_router)
 
     return app
 
