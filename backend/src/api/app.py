@@ -75,6 +75,27 @@ async def _init_pgvector() -> None:
         logger.warning("pgvector registration failed — vector operations may not work")
 
 
+def _init_skill_registry() -> None:
+    """Initialize the agentic skills registry on startup.
+
+    Loads skills from the configured directory (mounted container image volume).
+    Gracefully handles missing directory (skills are optional).
+    """
+    try:
+        from ..agents.orchestrator import set_skill_registry
+        from ..knowledge.skills import SkillRegistry
+
+        registry = SkillRegistry()
+        set_skill_registry(registry)
+        skills = registry.get_all_skills()
+        logger.info(
+            "Skill registry initialized",
+            extra={"total_skills": len(skills)},
+        )
+    except Exception:
+        logger.warning("Skill registry initialization failed — skills unavailable")
+
+
 async def _ingest_runbooks_on_startup() -> None:
     """Ingest bundled runbooks into pgvector on startup (AD-13).
 
@@ -119,6 +140,7 @@ async def lifespan(app: FastAPI):
     await setup_checkpointer()
     await _init_pgvector()
     await _ingest_runbooks_on_startup()
+    _init_skill_registry()
     sealing_task = asyncio.create_task(_background_sealing_sweep())
     dispatcher_task = asyncio.create_task(run_dispatcher())
     yield

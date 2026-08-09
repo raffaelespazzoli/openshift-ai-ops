@@ -26,6 +26,8 @@ class KnowledgeSettings:
     similarity_threshold: float = 0.7
     top_k: int = 5
     runbooks_directory: str = _DEFAULT_RUNBOOKS_DIR
+    learning_store_decay_half_life_days: float = 90.0
+    learning_store_similarity_threshold: float = 0.75
 
     @classmethod
     def from_env(cls) -> KnowledgeSettings:
@@ -50,6 +52,12 @@ class KnowledgeSettings:
             top_k=int(os.environ.get("RAG_TOP_K", "5")),
             runbooks_directory=os.environ.get(
                 "RUNBOOKS_DIRECTORY", _DEFAULT_RUNBOOKS_DIR
+            ),
+            learning_store_decay_half_life_days=float(
+                os.environ.get("LEARNING_STORE_DECAY_HALF_LIFE_DAYS", "90.0")
+            ),
+            learning_store_similarity_threshold=float(
+                os.environ.get("LEARNING_STORE_SIMILARITY_THRESHOLD", "0.75")
             ),
         )
 

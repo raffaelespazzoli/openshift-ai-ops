@@ -64,10 +64,22 @@ spec:
               value: "{{ .Values.queue.priorityWeights.info }}"
             - name: MCP_READONLY_URL
               value: "http://{{ .Release.Name }}-mcp-readonly:{{ .Values.mcpReadonly.port }}/mcp"
+            - name: RHOKP_MCP_URL
+              value: "http://{{ .Release.Name }}-okp-mcp:{{ .Values.okpMcp.port }}/mcp"
+            - name: SKILLS_DIRECTORY
+              value: "/skills"
+            - name: LEARNING_STORE_DECAY_HALF_LIFE_DAYS
+              value: "{{ .Values.learningStore.decayHalfLifeDays }}"
+            - name: LEARNING_STORE_SIMILARITY_THRESHOLD
+              value: "{{ .Values.learningStore.similarityThreshold }}"
             {{- if .Values.alertmanager.url }}
             - name: ALERTMANAGER_URL
               value: "{{ .Values.alertmanager.url }}"
             {{- end }}
+          volumeMounts:
+            - name: agentic-skills
+              mountPath: /skills
+              readOnly: true
           livenessProbe:
             tcpSocket:
               port: {{ .Values.backend.port }}
@@ -81,3 +93,8 @@ spec:
             periodSeconds: 10
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
+      volumes:
+        - name: agentic-skills
+          image:
+            reference: "{{ .Values.agenticSkills.image.repository }}:{{ .Values.agenticSkills.image.tag }}"
+            pullPolicy: {{ .Values.agenticSkills.image.pullPolicy | default "IfNotPresent" }}

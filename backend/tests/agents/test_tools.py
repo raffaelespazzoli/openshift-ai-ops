@@ -1,4 +1,4 @@
-"""Unit tests for orchestrator tools (AC: #1, #2, #4).
+"""Unit tests for orchestrator tools (AC: #1, #2, #4, #6).
 
 Tests each tool returns correct EvidenceArtifact/EvidenceSource.
 """
@@ -12,11 +12,16 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from src.agents.tools import (
+    _get_cluster_ocp_version,
     get_orchestrator_tools,
     get_resource_logs,
+    get_rhokp_document,
     query_cluster_resources,
+    query_past_incidents,
+    search_rhokp,
     search_runbooks,
     set_mcp_client,
+    set_rhokp_client,
 )
 from src.models.diagnosis import EvidenceArtifact, EvidenceGap, EvidenceSource
 
@@ -187,13 +192,302 @@ class TestSearchRunbooks:
         assert "failed" in result["reason"].lower()
 
 
+class TestSearchRhokp:
+    """Tests for the search_rhokp tool."""
+
+    @pytest.mark.unit
+    async def test_returns_evidence_on_success(self):
+        """search_rhokp returns evidence with source=RHOKP."""
+        from src.knowledge.rhokp_client import RHOKPClient
+
+        mock_client = AsyncMock(spec=RHOKPClient)
+        mock_client.search_portal = AsyncMock(return_value={
+            "success": True,
+            "data": [{"id": "doc1", "title": "Node memory pressure guide", "score": 0.9}],
+        })
+        set_rhokp_client(mock_client)
+
+        try:
+            result = await search_rhokp.ainvoke({"queries": ["node memory pressure"]})
+            assert result["type"] == "evidence"
+            assert result["source"] == EvidenceSource.RHOKP.value
+            assert "node memory pressure" in result["query"]
+        finally:
+            set_rhokp_client(None)
+
+    @pytest.mark.unit
+    async def test_returns_evidence_gap_on_failure(self):
+        """search_rhokp returns evidence_gap when RHOKP is unavailable."""
+        from src.knowledge.rhokp_client import RHOKPClient
+
+        mock_client = AsyncMock(spec=RHOKPClient)
+        mock_client.search_portal = AsyncMock(return_value={
+            "success": False,
+            "evidence_gap": EvidenceGap(
+                query="search_portal(['test'])",
+                reason="RHOKP query timed out",
+                timeout_seconds=30.0,
+            ),
+        })
+        set_rhokp_client(mock_client)
+
+        try:
+            result = await search_rhokp.ainvoke({"queries": ["test"]})
+            assert result["type"] == "evidence_gap"
+            assert result["source"] == EvidenceSource.RHOKP.value
+        finally:
+            set_rhokp_client(None)
+
+    @pytest.mark.unit
+    async def test_supports_multi_query_rank_fusion(self):
+        """search_rhokp accepts multiple queries for reciprocal rank fusion (AC #1)."""
+        from src.knowledge.rhokp_client import RHOKPClient
+
+        mock_client = AsyncMock(spec=RHOKPClient)
+        mock_client.search_portal = AsyncMock(return_value={
+            "success": True,
+            "data": [{"id": "doc1", "title": "fused results", "score": 0.95}],
+        })
+        set_rhokp_client(mock_client)
+
+        try:
+            queries = [
+                "node memory pressure OOM",
+                "kubelet eviction threshold",
+                "container memory limits exceeded",
+            ]
+            result = await search_rhokp.ainvoke({"queries": queries})
+            assert result["type"] == "evidence"
+            assert result["source"] == EvidenceSource.RHOKP.value
+            mock_client.search_portal.assert_called_once_with(queries, top_k=5)
+            assert "node memory pressure OOM" in result["query"]
+            assert "kubelet eviction threshold" in result["query"]
+        finally:
+            set_rhokp_client(None)
+
+
+class TestGetRhokpDocument:
+    """Tests for the get_rhokp_document tool."""
+
+    @pytest.mark.unit
+    async def test_returns_evidence_on_success(self):
+        """get_rhokp_document returns evidence with source=RHOKP."""
+        from src.knowledge.rhokp_client import RHOKPClient
+
+        mock_client = AsyncMock(spec=RHOKPClient)
+        mock_client.get_document = AsyncMock(return_value={
+            "success": True,
+            "data": {"id": "DOC-123", "title": "Full document", "content": "Body text"},
+        })
+        set_rhokp_client(mock_client)
+
+        try:
+            result = await get_rhokp_document.ainvoke({"doc_id": "DOC-123"})
+            assert result["type"] == "evidence"
+            assert result["source"] == EvidenceSource.RHOKP.value
+        finally:
+            set_rhokp_client(None)
+
+
+class TestQueryPastIncidents:
+    """Tests for the query_past_incidents tool."""
+
+    @pytest.mark.unit
+    async def test_returns_evidence_with_empty_learning_store(self):
+        """query_past_incidents returns evidence with empty cases on fresh deployment."""
+        from contextlib import asynccontextmanager
+
+        mock_conn = AsyncMock()
+
+        @asynccontextmanager
+        async def mock_acquire():
+            yield mock_conn
+
+        mock_pool = AsyncMock()
+        mock_pool.acquire = mock_acquire
+
+        with (
+            patch("src.agents.tools._get_cluster_ocp_version", new_callable=AsyncMock, return_value="4.15.2"),
+            patch("src.agents.tools._get_db_pool", new_callable=AsyncMock, return_value=mock_pool),
+            patch("pgvector.asyncpg.register_vector", new_callable=AsyncMock),
+            patch(
+                "src.knowledge.learning_store.query_learning_store",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
+            result = await query_past_incidents.ainvoke({"alert_context": "pod crash"})
+
+        assert result["type"] == "evidence"
+        assert result["source"] == EvidenceSource.LEARNING_STORE.value
+        assert result["cases"] == []
+
+    @pytest.mark.unit
+    async def test_returns_evidence_gap_on_failure(self):
+        """query_past_incidents returns evidence_gap when query fails."""
+        with (
+            patch("src.agents.tools._get_cluster_ocp_version", new_callable=AsyncMock, return_value="4"),
+            patch(
+                "src.agents.tools._get_db_pool",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("DB unavailable"),
+            ),
+        ):
+            result = await query_past_incidents.ainvoke({"alert_context": "test"})
+
+        assert result["type"] == "evidence_gap"
+        assert result["source"] == EvidenceSource.LEARNING_STORE.value
+
+    @pytest.mark.unit
+    async def test_queries_cluster_version_via_mcp(self):
+        """query_past_incidents gets live OCP version from MCP and passes to learning store."""
+        from contextlib import asynccontextmanager
+
+        mock_conn = AsyncMock()
+
+        @asynccontextmanager
+        async def mock_acquire():
+            yield mock_conn
+
+        mock_pool = AsyncMock()
+        mock_pool.acquire = mock_acquire
+
+        mock_query_ls = AsyncMock(return_value=[])
+
+        with (
+            patch("src.agents.tools._get_cluster_ocp_version", new_callable=AsyncMock, return_value="4.16.1"),
+            patch("src.agents.tools._get_db_pool", new_callable=AsyncMock, return_value=mock_pool),
+            patch("pgvector.asyncpg.register_vector", new_callable=AsyncMock),
+            patch(
+                "src.knowledge.learning_store.query_learning_store",
+                mock_query_ls,
+            ),
+        ):
+            await query_past_incidents.ainvoke({"alert_context": "pod crash"})
+
+        mock_query_ls.assert_called_once()
+        call_kwargs = mock_query_ls.call_args
+        assert call_kwargs.kwargs.get("current_ocp_version") == "4.16.1" or \
+            (len(call_kwargs.args) > 4 and call_kwargs.args[4] == "4.16.1")
+
+
+    @pytest.mark.unit
+    async def test_passes_configured_similarity_threshold(self):
+        """query_past_incidents passes the configured similarity threshold to the learning store."""
+        from contextlib import asynccontextmanager
+
+        mock_conn = AsyncMock()
+
+        @asynccontextmanager
+        async def mock_acquire():
+            yield mock_conn
+
+        mock_pool = AsyncMock()
+        mock_pool.acquire = mock_acquire
+
+        mock_query_ls = AsyncMock(return_value=[])
+
+        with (
+            patch("src.agents.tools._get_cluster_ocp_version", new_callable=AsyncMock, return_value="4.15"),
+            patch("src.agents.tools._get_db_pool", new_callable=AsyncMock, return_value=mock_pool),
+            patch("pgvector.asyncpg.register_vector", new_callable=AsyncMock),
+            patch(
+                "src.knowledge.learning_store.query_learning_store",
+                mock_query_ls,
+            ),
+            patch(
+                "src.config.knowledge_settings.get_knowledge_settings",
+                return_value=type("S", (), {"learning_store_similarity_threshold": 0.82})(),
+            ),
+        ):
+            await query_past_incidents.ainvoke({"alert_context": "high cpu"})
+
+        mock_query_ls.assert_called_once()
+        call_kwargs = mock_query_ls.call_args
+        assert call_kwargs.kwargs.get("similarity_threshold") == 0.82
+
+
+class TestGetClusterOcpVersion:
+    """Tests for _get_cluster_ocp_version helper."""
+
+    @pytest.mark.unit
+    async def test_returns_version_from_cluster_version_resource(self):
+        """Extracts OCP version from ClusterVersion resource via MCP."""
+        cluster_version_json = json.dumps({
+            "status": {
+                "history": [
+                    {"version": "4.16.1", "state": "Completed"},
+                    {"version": "4.15.8", "state": "Completed"},
+                ],
+                "desired": {"version": "4.16.1"},
+            }
+        })
+        mock_artifact = EvidenceArtifact(
+            source=EvidenceSource.MCP_CLUSTER,
+            query="get_resource({'kind': 'ClusterVersion', 'name': 'version'})",
+            result=cluster_version_json,
+            timestamp=datetime.now(timezone.utc),
+        )
+        mock_client = AsyncMock()
+        mock_client.query = AsyncMock(return_value=mock_artifact)
+        set_mcp_client(mock_client)
+
+        try:
+            version = await _get_cluster_ocp_version()
+            assert version == "4.16.1"
+        finally:
+            set_mcp_client(None)
+
+    @pytest.mark.unit
+    async def test_falls_back_to_desired_version(self):
+        """Falls back to desired version when history is empty."""
+        cluster_version_json = json.dumps({
+            "status": {
+                "history": [],
+                "desired": {"version": "4.15.0"},
+            }
+        })
+        mock_artifact = EvidenceArtifact(
+            source=EvidenceSource.MCP_CLUSTER,
+            query="get_resource",
+            result=cluster_version_json,
+            timestamp=datetime.now(timezone.utc),
+        )
+        mock_client = AsyncMock()
+        mock_client.query = AsyncMock(return_value=mock_artifact)
+        set_mcp_client(mock_client)
+
+        try:
+            version = await _get_cluster_ocp_version()
+            assert version == "4.15.0"
+        finally:
+            set_mcp_client(None)
+
+    @pytest.mark.unit
+    async def test_returns_fallback_on_evidence_gap(self):
+        """Returns '4' fallback when MCP returns an EvidenceGap."""
+        mock_client = AsyncMock()
+        mock_client.query = AsyncMock(return_value=EvidenceGap(
+            query="get_resource",
+            reason="MCP timeout",
+            timeout_seconds=30.0,
+        ))
+        set_mcp_client(mock_client)
+
+        try:
+            version = await _get_cluster_ocp_version()
+            assert version == "4"
+        finally:
+            set_mcp_client(None)
+
+
 class TestGetOrchestratorTools:
     """Tests for the tool list getter."""
 
     @pytest.mark.unit
-    def test_returns_three_tools(self):
+    def test_returns_six_tools(self):
         tools = get_orchestrator_tools()
-        assert len(tools) == 3
+        assert len(tools) == 6
 
     @pytest.mark.unit
     def test_tool_names_correct(self):
@@ -202,3 +496,6 @@ class TestGetOrchestratorTools:
         assert "query_cluster_resources" in names
         assert "get_resource_logs" in names
         assert "search_runbooks" in names
+        assert "search_rhokp" in names
+        assert "get_rhokp_document" in names
+        assert "query_past_incidents" in names

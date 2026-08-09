@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-solr
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}-solr
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: 1
+  serviceName: {{ .Release.Name }}-solr
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Chart.Name }}-solr
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Chart.Name }}-solr
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: solr
+          image: "{{ .Values.solr.image.repository }}:{{ .Values.solr.image.tag }}"
+          imagePullPolicy: {{ .Values.solr.image.pullPolicy }}
+          env:
+            - name: ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.solr.accessKeySecret }}
+                  key: access-key
+            - name: SOLR_JETTY_HOST
+              value: "0.0.0.0"
+          ports:
+            - containerPort: 8983
+              protocol: TCP
+          volumeMounts:
+            - name: solr-data
+              mountPath: /opt/solr/server/solr/portal/data
+          resources:
+            {{- toYaml .Values.solr.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: solr-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.solr.storage.size | default "15Gi" }}

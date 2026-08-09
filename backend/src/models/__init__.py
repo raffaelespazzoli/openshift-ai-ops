@@ -25,6 +25,7 @@ from .diagnosis import (
 )
 from .events import BusEvent, EventBus, EventNames, SSEEventData
 from .incident import Incident, Severity
+from .case_record import CaseRecordSummary
 from .knowledge import CompletenessResult, RunbookChunk
 from .root_cause_event import CorrelationEvidence, CorrelationLayer, RootCauseEvent
 from .state_machine import (
@@ -46,6 +47,7 @@ __all__ = [
     "ApiMeta",
     "ApiResponse",
     "BusEvent",
+    "CaseRecordSummary",
     "CompletenessResult",
     "CorrelationEvidence",
     "CorrelationLayer",

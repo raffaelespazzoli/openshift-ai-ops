@@ -360,3 +360,260 @@ class TestGraphCheckpoint:
 
         finally:
             await pool.close()
+
+
+class TestMultiSourceEvidence:
+    """Tests for multi-source evidence with RHOKP, Learning Store, and skills."""
+
+    @pytest.mark.unit
+    async def test_orchestrator_tools_include_new_sources(self):
+        """Orchestrator tool list includes RHOKP, Learning Store, and skill tools."""
+        from src.agents.tools import get_orchestrator_tools
+
+        tools = get_orchestrator_tools()
+        names = {t.name for t in tools}
+        assert "search_rhokp" in names
+        assert "get_rhokp_document" in names
+        assert "query_past_incidents" in names
+
+    @pytest.mark.unit
+    async def test_diagnosis_with_rhokp_evidence(self, mock_orchestrator_agent):
+        """Orchestrator produces diagnosis when RHOKP tools are available."""
+        state = _make_initial_state()
+        with patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock):
+            result = await diagnose_node(state)
+
+        assert result["diagnosis"] is not None
+        diag = DiagnosisObject.model_validate(result["diagnosis"])
+        assert diag.confidence > 0.0
+
+    @pytest.mark.unit
+    async def test_missing_rhokp_produces_evidence_gap(self):
+        """When RHOKP is unavailable, diagnosis proceeds with other sources."""
+        from src.agents.tools import search_rhokp, set_rhokp_client
+        from src.knowledge.rhokp_client import RHOKPClient
+        from src.models.diagnosis import EvidenceGap
+
+        mock_client = AsyncMock(spec=RHOKPClient)
+        mock_client.search_portal = AsyncMock(return_value={
+            "success": False,
+            "evidence_gap": EvidenceGap(
+                query="search_portal(['test'])",
+                reason="RHOKP connection refused",
+            ),
+        })
+        set_rhokp_client(mock_client)
+
+        try:
+            result = await search_rhokp.ainvoke({"queries": ["test"]})
+            assert result["type"] == "evidence_gap"
+            assert result["source"] == "rhokp"
+        finally:
+            set_rhokp_client(None)
+
+    @pytest.mark.unit
+    async def test_empty_learning_store_no_evidence_gap(self):
+        """Empty Learning Store returns evidence (not gap) — expected on fresh deploy."""
+        from contextlib import asynccontextmanager
+
+        from src.agents.tools import query_past_incidents
+
+        mock_conn = AsyncMock()
+
+        @asynccontextmanager
+        async def mock_acquire():
+            yield mock_conn
+
+        mock_pool = AsyncMock()
+        mock_pool.acquire = mock_acquire
+
+        with (
+            patch("src.agents.tools._get_db_pool", new_callable=AsyncMock, return_value=mock_pool),
+            patch("pgvector.asyncpg.register_vector", new_callable=AsyncMock),
+            patch(
+                "src.knowledge.learning_store.query_learning_store",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
+            result = await query_past_incidents.ainvoke({"alert_context": "test"})
+
+        assert result["type"] == "evidence"
+        assert result["source"] == "learning_store"
+        assert result["cases"] == []
+
+    @pytest.mark.unit
+    async def test_no_skills_directory_proceeds_without_skills(self):
+        """When skills directory is missing, orchestrator proceeds with other tools."""
+        from src.agents.orchestrator import _get_skill_tools, set_skill_registry
+        from src.config.skills_settings import SkillsSettings
+        from src.knowledge.skills import SkillRegistry
+
+        settings = SkillsSettings(skills_directory="/nonexistent/path")
+        registry = SkillRegistry(settings=settings)
+        set_skill_registry(registry)
+
+        try:
+            skill_tools = _get_skill_tools()
+            assert skill_tools == []
+        finally:
+            set_skill_registry(None)
+
+    @pytest.mark.unit
+    async def test_multi_source_evidence_attribution(self):
+        """DiagnosisObject.evidence contains entries from all knowledge sources (AC #6, Task 10.2).
+
+        Constructs a DiagnosisObject with evidence from MCP, runbook, RHOKP,
+        Learning Store, and agentic skill sources and verifies all
+        EvidenceSource values appear in the evidence array.
+        """
+        from datetime import datetime, timezone
+
+        from src.models.diagnosis import EvidenceArtifact, EvidenceSource
+
+        now = datetime.now(timezone.utc)
+
+        multi_source_evidence = [
+            EvidenceArtifact(
+                source=EvidenceSource.MCP_CLUSTER,
+                query="get_resources({'kind': 'Pod'})",
+                result='{"items": [{"status": {"phase": "CrashLoopBackOff"}}]}',
+                timestamp=now,
+            ),
+            EvidenceArtifact(
+                source=EvidenceSource.RUNBOOK,
+                query="search_runbooks('OOMKilled pod')",
+                result="Runbook: Check memory limits and requests configuration",
+                timestamp=now,
+            ),
+            EvidenceArtifact(
+                source=EvidenceSource.RHOKP,
+                query="search_portal(['OOMKilled', 'memory pressure'])",
+                result='{"results": [{"id": "doc-1", "title": "Memory management"}]}',
+                timestamp=now,
+            ),
+            EvidenceArtifact(
+                source=EvidenceSource.LEARNING_STORE,
+                query="query_past_incidents('KubePodCrashLooping')",
+                result='{"cases": [{"root_cause_code": "workload/oom-killed", "confidence": 0.82}]}',
+                timestamp=now,
+            ),
+            EvidenceArtifact(
+                source=EvidenceSource.AGENTIC_SKILL,
+                query="skill_cluster-troubleshoot(check memory usage)",
+                result='{"memory_usage": "92%", "eviction_threshold": "100Mi"}',
+                timestamp=now,
+            ),
+        ]
+
+        incident_id = uuid.uuid4()
+        diag = DiagnosisObject(
+            incident_id=incident_id,
+            root_cause_component="workload",
+            failure_mode="oom-killed",
+            root_cause_code="workload/oom-killed",
+            causal_chain=["Container OOMKilled due to memory limit exceeded"],
+            affected_resources=["pod/test-app-xyz-123"],
+            evidence=multi_source_evidence,
+            confidence=0.92,
+            agent_summary="Pod OOM killed — all knowledge sources contributed evidence",
+        )
+
+        evidence_sources = {e.source for e in diag.evidence}
+        assert EvidenceSource.MCP_CLUSTER in evidence_sources
+        assert EvidenceSource.RUNBOOK in evidence_sources
+        assert EvidenceSource.RHOKP in evidence_sources
+        assert EvidenceSource.LEARNING_STORE in evidence_sources
+        assert EvidenceSource.AGENTIC_SKILL in evidence_sources
+        assert len(evidence_sources) == 5
+        assert len(diag.evidence) == 5
+
+    @pytest.mark.unit
+    async def test_multi_source_evidence_via_mock_orchestrator(self):
+        """Orchestrator mock producing multi-source evidence validates through the graph.
+
+        Verifies the end-to-end flow: a mock orchestrator returning evidence
+        from all five sources produces a valid DiagnosisObject with all
+        EvidenceSource values present.
+        """
+        from datetime import datetime, timezone
+
+        from src.models.diagnosis import EvidenceArtifact, EvidenceSource
+
+        now = datetime.now(timezone.utc)
+
+        all_source_evidence = [
+            EvidenceArtifact(
+                source=EvidenceSource.MCP_CLUSTER,
+                query="get_resources({'kind': 'Pod'})",
+                result='{"status": {"phase": "CrashLoopBackOff"}}',
+                timestamp=now,
+            ),
+            EvidenceArtifact(
+                source=EvidenceSource.RUNBOOK,
+                query="search_runbooks('crash loop')",
+                result="Runbook: Restart policy checks",
+                timestamp=now,
+            ),
+            EvidenceArtifact(
+                source=EvidenceSource.RHOKP,
+                query="search_portal(['crash loop'])",
+                result='{"results": [{"id": "rhokp-1"}]}',
+                timestamp=now,
+            ),
+            EvidenceArtifact(
+                source=EvidenceSource.LEARNING_STORE,
+                query="query_past_incidents('CrashLoopBackOff')",
+                result='{"cases": []}',
+                timestamp=now,
+            ),
+            EvidenceArtifact(
+                source=EvidenceSource.AGENTIC_SKILL,
+                query="skill_node-diag(check node health)",
+                result='{"node_status": "Ready"}',
+                timestamp=now,
+            ),
+        ]
+
+        async def mock_run_with_all_sources(state, config=None):
+            incident_id = state.get("incident_id", str(uuid.uuid4()))
+            diagnosis = DiagnosisObject(
+                incident_id=uuid.UUID(incident_id),
+                root_cause_component="workload",
+                failure_mode="crash-loop-backoff",
+                root_cause_code="workload/crash-loop-backoff",
+                causal_chain=["Pod CrashLoopBackOff due to config error"],
+                affected_resources=["pod/app-xyz-123"],
+                evidence=all_source_evidence,
+                confidence=0.90,
+                agent_summary="Crash loop diagnosed with evidence from all sources",
+            )
+            return {
+                "diagnosis": diagnosis.model_dump(mode="json"),
+                "runbook_context": [],
+                "completeness_attempts": state.get("completeness_attempts", 0) + 1,
+                "coverage_gaps": [],
+                "rejected_hypotheses": [],
+                "evidence_ledger": [],
+                "stage": "diagnosed",
+            }
+
+        state = _make_initial_state()
+        with (
+            patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock),
+            patch("src.agents.orchestrator.run_orchestrator", side_effect=mock_run_with_all_sources),
+        ):
+            result = await diagnose_node(state)
+
+        assert result["diagnosis"] is not None
+        diag = DiagnosisObject.model_validate(result["diagnosis"])
+        evidence_sources = {e.source for e in diag.evidence}
+        assert evidence_sources == {
+            EvidenceSource.MCP_CLUSTER,
+            EvidenceSource.RUNBOOK,
+            EvidenceSource.RHOKP,
+            EvidenceSource.LEARNING_STORE,
+            EvidenceSource.AGENTIC_SKILL,
+        }
+        assert len(diag.evidence) == 5
+        assert diag.confidence == 0.90

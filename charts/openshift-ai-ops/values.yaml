@@ -49,6 +49,46 @@ mcpReadonly:
       memory: "128Mi"
       cpu: "200m"
 
+solr:
+  image:
+    repository: registry.redhat.io/offline-knowledge-portal/rhokp-rhel9
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  accessKeySecret: rhokp-access-key
+  storage:
+    size: 15Gi
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "500m"
+    limits:
+      memory: "4Gi"
+      cpu: "2000m"
+
+okpMcp:
+  image:
+    repository: quay.io/redhat-user-workloads/rhel-lightspeed-tenant/rhel-knowledge-bridge
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  port: 8000
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+
+agenticSkills:
+  image:
+    repository: quay.io/openshift/agentic-skills
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+learningStore:
+  decayHalfLifeDays: 90
+  similarityThreshold: 0.75
+
 postgresql:
   replicaCount: 1
   image:

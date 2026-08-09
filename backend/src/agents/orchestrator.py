@@ -28,6 +28,32 @@ from .llm_client import get_chat_model
 from .prompts import STRUCTURED_OUTPUT_PROMPT, build_diagnosis_prompt, get_system_prompt
 from .tools import get_orchestrator_tools
 
+_skill_registry = None
+
+
+def set_skill_registry(registry) -> None:
+    """Override the skill registry (for testing or app startup)."""
+    global _skill_registry
+    _skill_registry = registry
+
+
+def _get_skill_tools() -> list:
+    """Get tool functions from the skill registry (if available)."""
+    global _skill_registry
+    if _skill_registry is None:
+        try:
+            from ..knowledge.skills import SkillRegistry
+            _skill_registry = SkillRegistry()
+        except Exception:
+            return []
+
+    from ..knowledge.skills import skill_to_tool
+    from ..pipeline.mcp_client import ReadOnlyMCPClient
+
+    mcp_client = ReadOnlyMCPClient()
+    diagnosis_skills = _skill_registry.get_diagnosis_skills()
+    return [skill_to_tool(skill, mcp_client) for skill in diagnosis_skills]
+
 logger = get_logger(Component.AGENT)
 
 MAX_COMPLETENESS_RETRIES = 2
@@ -52,7 +78,11 @@ def build_orchestrator_agent(
         A compiled LangGraph agent ready for invocation.
     """
     llm = get_chat_model(AgentRole.ORCHESTRATOR)
-    agent_tools = tools if tools is not None else get_orchestrator_tools()
+    if tools is not None:
+        agent_tools = tools
+    else:
+        agent_tools = get_orchestrator_tools()
+        agent_tools.extend(_get_skill_tools())
 
     return create_react_agent(
         model=llm,

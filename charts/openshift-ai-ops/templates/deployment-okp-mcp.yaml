@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-okp-mcp
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}-okp-mcp
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Chart.Name }}-okp-mcp
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Chart.Name }}-okp-mcp
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: okp-mcp
+          image: "{{ .Values.okpMcp.image.repository }}:{{ .Values.okpMcp.image.tag }}"
+          imagePullPolicy: {{ .Values.okpMcp.image.pullPolicy }}
+          env:
+            - name: MCP_TRANSPORT
+              value: "streamable-http"
+            - name: MCP_SOLR_URL
+              value: "http://{{ .Release.Name }}-solr:8983"
+            - name: MCP_PORT
+              value: "{{ .Values.okpMcp.port }}"
+          ports:
+            - containerPort: {{ .Values.okpMcp.port }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.okpMcp.resources | nindent 12 }}
