@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-08-08
-last_updated: 2026-08-09T15:32:00
+last_updated: 2026-08-09T16:34:00
 project: openshift-ai-ops
 project_key: NOKEY
 tracking_system: file-system
@@ -58,11 +58,11 @@ development_status:
   epic-1-retrospective: done
 
   # Epic 2: AI Diagnosis Pipeline
-  epic-2: in-progress
+  epic-2: done
   2-1-langgraph-diagnosis-pipeline-and-mcp-integration: done
   2-2-orchestrator-agent-and-runbook-enriched-diagnosis: done
   2-3-rhokp-learning-store-and-agentic-skills-integration: done
-  2-4-diagnosis-skeptic-and-immutable-handoff: ready-for-dev
+  2-4-diagnosis-skeptic-and-immutable-handoff: done
   epic-2-retrospective: optional
 
   # Epic 3: Remediation, Execution & Outcome

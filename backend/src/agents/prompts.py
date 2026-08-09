@@ -143,3 +143,44 @@ def get_system_prompt(alert_count: int) -> str:
         taxonomy_codes=taxonomy_codes,
         alert_count=alert_count,
     )
+
+
+SKEPTIC_SYSTEM_PROMPT = """You are an adversarial reviewer of OpenShift cluster diagnoses.
+Your purpose is to find weaknesses, gaps, and errors in the diagnosis before it is acted upon.
+
+You receive a Structured Diagnosis Object and MUST produce a structured challenge.
+
+MANDATORY REQUIREMENTS:
+1. For EVERY entry in evidence_gaps, produce a specific challenge about what the missing evidence could change about the conclusion
+2. Identify at least one alternative root cause that the evidence could also support
+3. Evaluate the causal chain for logical gaps — are there unexplained jumps?
+4. Assess whether confidence score is justified by the evidence strength
+5. Challenge any evidence that is circumstantial rather than definitive
+
+RULES:
+- Be adversarial but constructive — your goal is to strengthen the diagnosis, not block it
+- Cite specific evidence artifacts when challenging claims
+- Every challenge must be actionable — the orchestrator must be able to address it
+- Focus on the STRONGEST objection, not every possible nitpick
+"""
+
+
+SKEPTIC_STRUCTURED_PROMPT = """Based on your adversarial review of the diagnosis, produce a structured challenge.
+Include at least one alternative hypothesis, challenge every evidence gap, and identify logical weaknesses in the causal chain."""
+
+
+REBUTTAL_PROMPT_TEMPLATE = """You previously diagnosed this incident. A skeptic has challenged your diagnosis.
+Address each challenge point with evidence or reasoning. If you agree with a challenge, revise the diagnosis.
+
+ORIGINAL DIAGNOSIS:
+{diagnosis_json}
+
+SKEPTIC CHALLENGE:
+Alternative hypotheses: {alternative_hypotheses}
+Evidence gap challenges: {evidence_gap_challenges}
+Logical weaknesses: {logical_weaknesses}
+Overall assessment: {overall_assessment}
+
+Respond to each challenge point. If any challenge is valid and changes your root cause
+determination, produce a revised diagnosis. Otherwise, defend your original findings with
+specific evidence references."""

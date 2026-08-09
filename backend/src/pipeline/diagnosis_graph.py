@@ -18,7 +18,9 @@ from ..models.diagnosis import (
     EvidenceArtifact,
     EvidenceGap,
     EvidenceSource,
+    ImmutableDiagnosisArtifact,
 )
+from ..models.skeptic import SkepticVerdict
 from .audit_hook import pipeline_audit_log
 
 logger = get_logger(Component.PIPELINE)
@@ -44,6 +46,10 @@ class DiagnosisState(TypedDict):
     rejected_hypotheses: list[dict]
     unaddressed_alerts: list[str]
     evidence_ledger: list[dict]
+    # Fields added in Story 2.4:
+    skeptic_challenge: dict | None
+    skeptic_verdict: dict | None
+    immutable_artifact: dict | None
 
 
 async def diagnose_node(state: DiagnosisState) -> dict:
@@ -156,16 +162,112 @@ async def completeness_gate_node(state: DiagnosisState) -> dict:
 def _completeness_routing(state: DiagnosisState) -> str:
     """Conditional edge: route based on completeness gate result.
 
-    Returns "finalize" when the diagnosis is complete or retries are
-    exhausted. Returns "orchestrate" to re-diagnose when unaddressed
+    Returns "skeptic_validation" when the diagnosis is complete or retries
+    are exhausted. Returns "orchestrate" to re-diagnose when unaddressed
     alerts remain and retries are available.
     """
     unaddressed = state.get("unaddressed_alerts", [])
     attempts = state.get("completeness_attempts", 0)
 
     if not unaddressed or attempts > MAX_COMPLETENESS_RETRIES:
-        return "finalize"
+        return "skeptic_validation"
     return "orchestrate"
+
+
+async def skeptic_validation_node(state: DiagnosisState) -> dict:
+    """Skeptic validation stage — runs adversarial challenge/response loop (Story 2.4).
+
+    Invokes the skeptic agent and orchestrator rebuttal inside a single
+    graph node. The skeptic loop runs as plain Python (not graph edges).
+    After validation, seals the diagnosis into an ImmutableDiagnosisArtifact.
+    """
+    from .skeptic_validation import run_skeptic_validation, seal_diagnosis
+
+    incident_id = state["incident_id"]
+    diagnosis_dict = state.get("diagnosis")
+
+    if diagnosis_dict is None:
+        logger.warning(
+            "Skeptic node reached with no diagnosis — skipping validation",
+            extra={"incident_id": incident_id},
+        )
+        return {}
+
+    logger.info("Skeptic validation node started", extra={"incident_id": incident_id})
+
+    await pipeline_audit_log(
+        incident_id=incident_id,
+        stage_name="skeptic_validation",
+        state_before=state.get("stage", "diagnosing"),
+        state_after="validating",
+    )
+
+    diagnosis = DiagnosisObject.model_validate(diagnosis_dict)
+    final_diagnosis, verdict = await run_skeptic_validation(diagnosis, state)
+
+    sealed = seal_diagnosis(final_diagnosis, verdict)
+
+    await pipeline_audit_log(
+        incident_id=incident_id,
+        stage_name="skeptic_validation",
+        state_before="validating",
+        state_after="validated",
+        extra_detail={
+            "rounds_completed": verdict.rounds_completed,
+            "hash_changed": verdict.original_hash != verdict.final_hash,
+        },
+    )
+
+    return {
+        "diagnosis": final_diagnosis.model_dump(mode="json"),
+        "skeptic_challenge": verdict.challenge_history[-1]["challenge"] if verdict.challenge_history else None,
+        "skeptic_verdict": verdict.model_dump(mode="json"),
+        "immutable_artifact": sealed.model_dump(mode="json"),
+    }
+
+
+async def persist_skeptic_artifacts(
+    conn,
+    incident_id: str,
+    verdict: SkepticVerdict,
+    sealed: ImmutableDiagnosisArtifact,
+) -> None:
+    """Persist skeptic review rounds and immutable diagnosis to the database.
+
+    Must be called within the caller's transaction scope so that skeptic
+    persistence, incident state transition, and queue completion are all
+    atomic. Raises on failure to trigger transaction rollback.
+    """
+    from ..db.diagnosis import persist_immutable_diagnosis
+    from ..db.skeptic import persist_skeptic_record
+
+    for entry in verdict.challenge_history:
+        await persist_skeptic_record(
+            conn,
+            incident_id=incident_id,
+            round_number=entry["round"],
+            challenge=entry["challenge"],
+            response=entry["response"],
+            verdict=verdict.model_dump(mode="json")
+            if entry == verdict.challenge_history[-1]
+            else None,
+        )
+
+    diagnosis_data = sealed.model_dump(mode="json")
+    diagnosis_data["incident_id"] = str(incident_id)
+
+    await persist_immutable_diagnosis(
+        conn,
+        incident_id=incident_id,
+        diagnosis=diagnosis_data,
+        skeptic_verdict=verdict.model_dump(mode="json"),
+        sealed_at=sealed.sealed_at,
+    )
+
+    logger.info(
+        "Skeptic artifacts persisted",
+        extra={"incident_id": incident_id},
+    )
 
 
 async def finalize_node(state: DiagnosisState) -> dict:
@@ -208,24 +310,27 @@ async def finalize_node(state: DiagnosisState) -> dict:
 def build_diagnosis_graph() -> StateGraph:
     """Build the LangGraph StateGraph for diagnosis (not yet compiled).
 
-    Graph structure:
-      diagnose → completeness_gate → (routing) → finalize | diagnose
-      finalize → END
+    Graph structure (Story 2.4):
+      diagnose → completeness_gate → (routing) → skeptic_validation | diagnose
+      skeptic_validation → finalize → END
 
     The completeness gate evaluates whether all alerts are addressed.
-    If not, it routes back to diagnose (max 2 retries). This makes
-    retries checkpointable at the graph level (Tasks 6.3, 7.2).
+    If not, it routes back to diagnose (max 2 retries). After the
+    completeness gate passes, the skeptic validation node runs the
+    adversarial challenge/response loop and seals the diagnosis.
     """
     builder = StateGraph(DiagnosisState)
     builder.add_node("diagnose", diagnose_node)
     builder.add_node("completeness_gate", completeness_gate_node)
+    builder.add_node("skeptic_validation", skeptic_validation_node)
     builder.add_node("finalize", finalize_node)
     builder.add_edge("diagnose", "completeness_gate")
     builder.add_conditional_edges(
         "completeness_gate",
         _completeness_routing,
-        {"finalize": "finalize", "orchestrate": "diagnose"},
+        {"skeptic_validation": "skeptic_validation", "orchestrate": "diagnose"},
     )
+    builder.add_edge("skeptic_validation", "finalize")
     builder.add_edge("finalize", END)
     builder.set_entry_point("diagnose")
     return builder

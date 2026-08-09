@@ -36,6 +36,9 @@ def _make_initial_state(incident_id: str | None = None) -> DiagnosisState:
         "rejected_hypotheses": [],
         "unaddressed_alerts": [],
         "evidence_ledger": [],
+        "skeptic_challenge": None,
+        "skeptic_verdict": None,
+        "immutable_artifact": None,
     }
 
 
@@ -55,6 +58,7 @@ class TestGraphCompilation:
         node_names = set(graph.nodes.keys())
         assert "diagnose" in node_names
         assert "completeness_gate" in node_names
+        assert "skeptic_validation" in node_names
         assert "finalize" in node_names
 
 
@@ -138,11 +142,11 @@ class TestCompletenessRouting:
     """Tests for the graph-level completeness routing logic."""
 
     @pytest.mark.unit
-    def test_routes_to_finalize_when_no_unaddressed(self):
+    def test_routes_to_skeptic_when_no_unaddressed(self):
         state = _make_initial_state()
         state["unaddressed_alerts"] = []
         state["completeness_attempts"] = 1
-        assert _completeness_routing(state) == "finalize"
+        assert _completeness_routing(state) == "skeptic_validation"
 
     @pytest.mark.unit
     def test_routes_to_orchestrate_when_unaddressed_and_retries_remain(self):
@@ -159,11 +163,11 @@ class TestCompletenessRouting:
         assert _completeness_routing(state) == "orchestrate"
 
     @pytest.mark.unit
-    def test_routes_to_finalize_when_max_retries_exhausted(self):
+    def test_routes_to_skeptic_when_max_retries_exhausted(self):
         state = _make_initial_state()
         state["unaddressed_alerts"] = ["alert-fp-123"]
         state["completeness_attempts"] = 3
-        assert _completeness_routing(state) == "finalize"
+        assert _completeness_routing(state) == "skeptic_validation"
 
 
 class TestCompletenessGateNode:
@@ -210,8 +214,37 @@ class TestCompletenessGateNode:
         assert len(result["unaddressed_alerts"]) > 0
 
 
+def _mock_skeptic_validation():
+    """Patch the skeptic validation loop for graph E2E tests."""
+    from src.models.skeptic import SkepticVerdict
+
+    async def mock_run_skeptic_validation(diagnosis, state):
+        verdict = SkepticVerdict(
+            passed=True,
+            rounds_completed=1,
+            original_hash=diagnosis.root_cause_hash(),
+            final_hash=diagnosis.root_cause_hash(),
+            challenge_history=[{
+                "round": 1,
+                "challenge": {
+                    "alternative_hypotheses": ["test alt"],
+                    "logical_weaknesses": ["test weakness"],
+                    "overall_assessment": "test",
+                },
+                "response": {"rebuttals": [], "summary": "defended"},
+            }],
+            verdict_reasoning="Mock validation passed",
+        )
+        return diagnosis, verdict
+
+    return patch(
+        "src.pipeline.skeptic_validation.run_skeptic_validation",
+        side_effect=mock_run_skeptic_validation,
+    )
+
+
 class TestGraphEndToEnd:
-    """Graph runs end-to-end with mocked orchestrator, produces DiagnosisObject."""
+    """Graph runs end-to-end with mocked orchestrator and skeptic."""
 
     @pytest.mark.unit
     async def test_full_graph_execution(self, mock_orchestrator_agent):
@@ -219,7 +252,10 @@ class TestGraphEndToEnd:
         graph = builder.compile()
         initial = _make_initial_state()
 
-        with patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock):
+        with (
+            patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock),
+            _mock_skeptic_validation(),
+        ):
             final = await graph.ainvoke(initial)
 
         assert final["stage"] == "finalized"
@@ -235,7 +271,10 @@ class TestGraphEndToEnd:
         initial = _make_initial_state()
         initial["stage"] = "entered"
 
-        with patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock):
+        with (
+            patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock),
+            _mock_skeptic_validation(),
+        ):
             final = await graph.ainvoke(initial)
 
         assert final["stage"] == "finalized"
@@ -247,11 +286,208 @@ class TestGraphEndToEnd:
         graph = builder.compile()
         initial = _make_initial_state()
 
-        with patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock):
+        with (
+            patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock),
+            _mock_skeptic_validation(),
+        ):
             final = await graph.ainvoke(initial)
 
         assert "completeness_attempts" in final
         assert final["completeness_attempts"] >= 1
+
+    @pytest.mark.unit
+    async def test_full_graph_produces_immutable_artifact(self, mock_orchestrator_agent):
+        """Full graph path produces ImmutableDiagnosisArtifact in final state."""
+        builder = build_diagnosis_graph()
+        graph = builder.compile()
+        initial = _make_initial_state()
+
+        with (
+            patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock),
+            _mock_skeptic_validation(),
+        ):
+            final = await graph.ainvoke(initial)
+
+        assert final["immutable_artifact"] is not None
+        assert final["skeptic_verdict"] is not None
+        verdict = final["skeptic_verdict"]
+        assert verdict["passed"] is True
+
+    @pytest.mark.unit
+    async def test_full_graph_skeptic_verdict_in_state(self, mock_orchestrator_agent):
+        """Verify skeptic verdict is present in final state."""
+        builder = build_diagnosis_graph()
+        graph = builder.compile()
+        initial = _make_initial_state()
+
+        with (
+            patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock),
+            _mock_skeptic_validation(),
+        ):
+            final = await graph.ainvoke(initial)
+
+        assert final["skeptic_verdict"]["rounds_completed"] == 1
+
+
+class TestSkepticPersistence:
+    """Verify skeptic artifacts are persisted atomically with pipeline completion."""
+
+    @pytest.mark.unit
+    async def test_skeptic_node_produces_artifacts_for_runner(self, mock_orchestrator_agent):
+        """skeptic_validation_node produces artifacts in state for runner to persist."""
+        from src.pipeline.diagnosis_graph import skeptic_validation_node
+
+        state = _make_initial_state()
+        state["diagnosis"] = {
+            "incident_id": state["incident_id"],
+            "root_cause_component": "workload",
+            "failure_mode": "crash-loop-backoff",
+            "root_cause_code": "workload/crash-loop-backoff",
+            "causal_chain": ["Test"],
+            "affected_resources": [],
+            "evidence": [],
+            "confidence": 0.8,
+            "agent_summary": "test",
+        }
+
+        with (
+            patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock),
+            _mock_skeptic_validation(),
+        ):
+            result = await skeptic_validation_node(state)
+
+        assert result["immutable_artifact"] is not None
+        assert result["skeptic_verdict"] is not None
+        assert result["skeptic_verdict"]["passed"] is True
+
+    @pytest.mark.unit
+    async def test_persist_skeptic_artifacts_raises_on_failure(self):
+        """persist_skeptic_artifacts raises (not swallows) on DB error."""
+        from src.pipeline.diagnosis_graph import persist_skeptic_artifacts
+        from src.models.skeptic import SkepticVerdict
+        from src.models.diagnosis import ImmutableDiagnosisArtifact
+        from datetime import datetime, timezone
+
+        verdict = SkepticVerdict(
+            passed=True,
+            rounds_completed=1,
+            original_hash="a" * 64,
+            final_hash="a" * 64,
+            challenge_history=[{"round": 1, "challenge": {}, "response": {}}],
+            verdict_reasoning="test",
+        )
+
+        diag_dict = {
+            "id": str(uuid.uuid4()),
+            "incident_id": str(uuid.uuid4()),
+            "root_cause_component": "workload",
+            "failure_mode": "crash-loop-backoff",
+            "root_cause_code": "workload/crash-loop-backoff",
+            "causal_chain": ["test"],
+            "affected_resources": [],
+            "evidence": [],
+            "confidence": 0.8,
+            "agent_summary": "test",
+            "skeptic_verdict": verdict.model_dump(mode="json"),
+            "sealed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        sealed = ImmutableDiagnosisArtifact.model_validate(diag_dict)
+
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock(side_effect=RuntimeError("DB down"))
+
+        with pytest.raises(RuntimeError, match="DB down"):
+            await persist_skeptic_artifacts(
+                mock_conn, str(uuid.uuid4()), verdict, sealed,
+            )
+
+
+class TestGroupedIncidentArtifactPayload:
+    """Verify per-incident artifact payloads contain the correct incident_id."""
+
+    @pytest.mark.unit
+    async def test_persist_skeptic_artifacts_overrides_incident_id(self):
+        """persist_skeptic_artifacts writes a diagnosis payload whose incident_id
+        matches the target incident, not the original primary incident."""
+        from datetime import datetime, timezone
+        from src.pipeline.diagnosis_graph import persist_skeptic_artifacts
+        from src.models.skeptic import SkepticVerdict
+        from src.models.diagnosis import ImmutableDiagnosisArtifact
+
+        primary_id = str(uuid.uuid4())
+        sibling_id = str(uuid.uuid4())
+
+        verdict = SkepticVerdict(
+            passed=True,
+            rounds_completed=1,
+            original_hash="a" * 64,
+            final_hash="a" * 64,
+            challenge_history=[{"round": 1, "challenge": {}, "response": {}}],
+            verdict_reasoning="test",
+        )
+
+        diag_dict = {
+            "id": str(uuid.uuid4()),
+            "incident_id": primary_id,
+            "root_cause_component": "workload",
+            "failure_mode": "crash-loop-backoff",
+            "root_cause_code": "workload/crash-loop-backoff",
+            "causal_chain": ["test"],
+            "affected_resources": [],
+            "evidence": [],
+            "confidence": 0.8,
+            "agent_summary": "test",
+            "skeptic_verdict": verdict.model_dump(mode="json"),
+            "sealed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        sealed = ImmutableDiagnosisArtifact.model_validate(diag_dict)
+
+        captured_calls: list[dict] = []
+
+        async def capturing_persist(conn, *, incident_id, diagnosis, skeptic_verdict, sealed_at):
+            captured_calls.append({
+                "incident_id": str(incident_id),
+                "diagnosis": diagnosis,
+            })
+
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock()
+
+        with patch("src.db.diagnosis.persist_immutable_diagnosis", side_effect=capturing_persist), \
+             patch("src.db.skeptic.persist_skeptic_record", new_callable=AsyncMock):
+            await persist_skeptic_artifacts(mock_conn, sibling_id, verdict, sealed)
+
+        assert len(captured_calls) == 1
+        stored_diagnosis = captured_calls[0]["diagnosis"]
+        assert stored_diagnosis["incident_id"] == sibling_id
+        assert captured_calls[0]["incident_id"] == sibling_id
+
+
+class TestSkepticSSEEvent:
+    """Verify the runner emits a skeptic completion SSE event with verdict payload."""
+
+    @pytest.mark.unit
+    async def test_emit_stage_event_accepts_payload(self):
+        """_emit_stage_event passes payload to SSEEventData."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_bus = AsyncMock()
+        mock_bus.emit = AsyncMock()
+
+        with patch("src.api.event_bus.get_event_bus", return_value=mock_bus):
+            from src.pipeline.runner import _emit_stage_event
+
+            verdict_payload = {"skeptic_verdict": {"passed": True, "rounds_completed": 1}}
+            await _emit_stage_event(
+                uuid.uuid4(), "skeptic_validation", "validated",
+                payload=verdict_payload,
+            )
+
+        mock_bus.emit.assert_called_once()
+        event_data = mock_bus.emit.call_args[0][1]
+        assert event_data.stage == "skeptic_validation"
+        assert event_data.state == "validated"
+        assert event_data.payload["skeptic_verdict"]["passed"] is True
 
 
 class TestGraphCheckpoint:
@@ -380,7 +616,9 @@ class TestMultiSourceEvidence:
     async def test_diagnosis_with_rhokp_evidence(self, mock_orchestrator_agent):
         """Orchestrator produces diagnosis when RHOKP tools are available."""
         state = _make_initial_state()
-        with patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock):
+        with (
+            patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock),
+        ):
             result = await diagnose_node(state)
 
         assert result["diagnosis"] is not None

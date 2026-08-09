@@ -12,6 +12,9 @@ import uuid
 from datetime import datetime, timezone
 from enum import StrEnum
 
+from types import MappingProxyType
+from typing import Any
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -123,14 +126,54 @@ class DiagnosisObject(BaseModel):
         return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def _freeze_value(v: Any) -> Any:
+    """Recursively freeze mutable structures for use in frozen models."""
+    if isinstance(v, dict):
+        return MappingProxyType({k: _freeze_value(val) for k, val in v.items()})
+    if isinstance(v, (list, tuple)):
+        return tuple(_freeze_value(item) for item in v)
+    return v
+
+
+def _thaw_value(v: Any) -> Any:
+    """Recursively convert frozen structures back to plain dicts/lists."""
+    if isinstance(v, MappingProxyType):
+        return {k: _thaw_value(val) for k, val in v.items()}
+    if isinstance(v, dict):
+        return {k: _thaw_value(val) for k, val in v.items()}
+    if isinstance(v, (tuple, list)):
+        return [_thaw_value(item) for item in v]
+    if isinstance(v, BaseModel):
+        return v.model_dump()
+    return v
+
+
+def _json_compat(v: Any) -> Any:
+    """Recursively make values JSON-serializable."""
+    if isinstance(v, BaseModel):
+        return v.model_dump(mode="json")
+    if isinstance(v, dict):
+        return {k: _json_compat(val) for k, val in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_json_compat(item) for item in v]
+    if isinstance(v, uuid.UUID):
+        return str(v)
+    if isinstance(v, datetime):
+        return v.isoformat()
+    if isinstance(v, StrEnum):
+        return v.value
+    return v
+
+
 class ImmutableDiagnosisArtifact(BaseModel):
     """Frozen snapshot of a DiagnosisObject for RBAC Airlock handoff.
 
     Once created, no fields can be modified. This is the artifact
     that crosses the diagnosis → remediation boundary.
+    All fields are required and immutable after sealing.
     """
 
-    model_config = {"frozen": True}
+    model_config = {"frozen": True, "arbitrary_types_allowed": True}
 
     id: uuid.UUID
     incident_id: uuid.UUID
@@ -144,8 +187,27 @@ class ImmutableDiagnosisArtifact(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     agent_summary: str = ""
     coverage_gaps: tuple[str, ...] = ()
-    alternative_hypotheses: tuple[dict, ...] = ()
+    alternative_hypotheses: tuple[Any, ...] = ()
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    skeptic_verdict: Any = Field(...)
+    sealed_at: datetime = Field(...)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _freeze_mutable_fields(cls, data: Any) -> Any:
+        """Freeze mutable dicts/lists and enforce non-null sealed fields."""
+        if isinstance(data, dict):
+            if data.get("skeptic_verdict") is None:
+                raise ValueError("skeptic_verdict is required and cannot be None")
+            if data.get("sealed_at") is None:
+                raise ValueError("sealed_at is required and cannot be None")
+            if isinstance(data["skeptic_verdict"], dict):
+                data["skeptic_verdict"] = _freeze_value(data["skeptic_verdict"])
+            if "alternative_hypotheses" in data:
+                data["alternative_hypotheses"] = tuple(
+                    _freeze_value(h) for h in data["alternative_hypotheses"]
+                )
+        return data
 
     def root_cause_hash(self) -> str:
         """Deterministic hash matching DiagnosisObject.root_cause_hash()."""
@@ -156,9 +218,40 @@ class ImmutableDiagnosisArtifact(BaseModel):
         )
         return hashlib.sha256(canonical.encode()).hexdigest()
 
+    def model_dump(self, **kwargs) -> dict[str, Any]:
+        """Override to convert MappingProxyType back to plain dicts for serialization."""
+        mode = kwargs.get("mode", "python")
+        result: dict[str, Any] = {}
+        for field_name in type(self).model_fields:
+            val = getattr(self, field_name)
+            val = _thaw_value(val)
+            if mode == "json":
+                val = _json_compat(val)
+            result[field_name] = val
+        return result
+
+    def model_dump_json(self, **kwargs) -> str:
+        """Override to convert MappingProxyType back to plain dicts for JSON."""
+        import json as _json
+        data = self.model_dump(mode="json", **kwargs)
+        return _json.dumps(data, default=str)
+
     @classmethod
-    def from_diagnosis(cls, diag: DiagnosisObject) -> ImmutableDiagnosisArtifact:
-        """Freeze a mutable DiagnosisObject into an immutable artifact."""
+    def from_diagnosis(
+        cls,
+        diag: DiagnosisObject,
+        *,
+        skeptic_verdict: dict[str, Any],
+        sealed_at: datetime,
+        **kwargs,
+    ) -> ImmutableDiagnosisArtifact:
+        """Freeze a mutable DiagnosisObject into an immutable artifact.
+
+        Args:
+            diag: The DiagnosisObject to freeze.
+            skeptic_verdict: The SkepticVerdict dict (required).
+            sealed_at: Timestamp when the artifact was sealed (required).
+        """
         return cls(
             id=diag.id,
             incident_id=diag.incident_id,
@@ -174,4 +267,7 @@ class ImmutableDiagnosisArtifact(BaseModel):
             coverage_gaps=tuple(diag.coverage_gaps),
             alternative_hypotheses=tuple(diag.alternative_hypotheses),
             created_at=diag.created_at,
+            skeptic_verdict=skeptic_verdict,
+            sealed_at=sealed_at,
+            **kwargs,
         )

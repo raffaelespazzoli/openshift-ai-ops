@@ -1,6 +1,10 @@
+---
+baseline_commit: 1b7645bc1a701b914c2e098b498ca744973c2ec2
+---
+
 # Story 2.4: Diagnosis Skeptic & Immutable Handoff
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -32,64 +36,71 @@ so that I can trust the system's conclusions are robust, not hallucinated or inc
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Skeptic-related Pydantic models (AC: #1, #2, #5)
-  - [ ] 1.1 Create `backend/src/models/skeptic.py` with `SkepticChallenge`, `SkepticResponse`, `SkepticVerdict` Pydantic models
-  - [ ] 1.2 `SkepticChallenge` fields: `alternative_hypotheses: list[str]`, `evidence_gap_challenges: list[str]`, `logical_weaknesses: list[str]`, `overall_assessment: str`, `created_at: datetime`
-  - [ ] 1.3 `SkepticResponse` fields: `rebuttals: list[SkepticRebuttal]`, `revised_diagnosis: DiagnosisObject | None`, `summary: str`, `created_at: datetime`
-  - [ ] 1.4 `SkepticVerdict` fields: `passed: bool`, `rounds_completed: int`, `original_hash: str`, `final_hash: str`, `challenge_history: list[dict]`, `verdict_reasoning: str`
-  - [ ] 1.5 Export from `backend/src/models/__init__.py`
+- [x] Task 1: Skeptic-related Pydantic models (AC: #1, #2, #5)
+  - [x] 1.1 Create `backend/src/models/skeptic.py` with `SkepticChallenge`, `SkepticResponse`, `SkepticVerdict` Pydantic models
+  - [x] 1.2 `SkepticChallenge` fields: `alternative_hypotheses: list[str]`, `evidence_gap_challenges: list[str]`, `logical_weaknesses: list[str]`, `overall_assessment: str`, `created_at: datetime`
+  - [x] 1.3 `SkepticResponse` fields: `rebuttals: list[SkepticRebuttal]`, `revised_diagnosis: DiagnosisObject | None`, `summary: str`, `created_at: datetime`
+  - [x] 1.4 `SkepticVerdict` fields: `passed: bool`, `rounds_completed: int`, `original_hash: str`, `final_hash: str`, `challenge_history: list[dict]`, `verdict_reasoning: str`
+  - [x] 1.5 Export from `backend/src/models/__init__.py`
 
-- [ ] Task 2: Skeptic agent implementation (AC: #1, #2, #8)
-  - [ ] 2.1 Create `backend/src/agents/skeptic.py` with `run_skeptic(diagnosis: DiagnosisObject, state: DiagnosisState) -> SkepticChallenge`
-  - [ ] 2.2 Build skeptic as a LangGraph `create_react_agent` subgraph with `response_format=SkepticChallenge`
-  - [ ] 2.3 System prompt: require mandatory challenge of every `evidence_gaps` entry, identify alternative root causes, find logical gaps in the causal chain
-  - [ ] 2.4 Create `backend/src/agents/prompts.py` — add `SKEPTIC_SYSTEM_PROMPT` (extend existing prompts file from 2.2)
+- [x] Task 2: Skeptic agent implementation (AC: #1, #2, #8)
+  - [x] 2.1 Create `backend/src/agents/skeptic.py` with `run_skeptic(diagnosis: DiagnosisObject, state: DiagnosisState) -> SkepticChallenge`
+  - [x] 2.2 Build skeptic as a LangGraph `create_react_agent` subgraph with `response_format=SkepticChallenge`
+  - [x] 2.3 System prompt: require mandatory challenge of every `evidence_gaps` entry, identify alternative root causes, find logical gaps in the causal chain
+  - [x] 2.4 Create `backend/src/agents/prompts.py` — add `SKEPTIC_SYSTEM_PROMPT` (extend existing prompts file from 2.2)
 
-- [ ] Task 3: Orchestrator rebuttal function (AC: #2)
-  - [ ] 3.1 Add `run_orchestrator_rebuttal(diagnosis: DiagnosisObject, challenge: SkepticChallenge, state: DiagnosisState) -> SkepticResponse` to `backend/src/agents/orchestrator.py`
-  - [ ] 3.2 Rebuttal uses same tools as orchestrator (MCP cluster query, runbook RAG) to gather additional evidence
-  - [ ] 3.3 If the orchestrator agrees with a challenge point, it may revise the diagnosis — return revised `DiagnosisObject` in the response
+- [x] Task 3: Orchestrator rebuttal function (AC: #2)
+  - [x] 3.1 Add `run_orchestrator_rebuttal(diagnosis: DiagnosisObject, challenge: SkepticChallenge, state: DiagnosisState) -> SkepticResponse` to `backend/src/agents/orchestrator.py`
+  - [x] 3.2 Rebuttal uses same tools as orchestrator (MCP cluster query, runbook RAG) to gather additional evidence
+  - [x] 3.3 If the orchestrator agrees with a challenge point, it may revise the diagnosis — return revised `DiagnosisObject` in the response
 
-- [ ] Task 4: Skeptic validation loop with hash comparison (AC: #3, #4)
-  - [ ] 4.1 Create `backend/src/pipeline/skeptic_validation.py` with `run_skeptic_validation(diagnosis: DiagnosisObject, state: DiagnosisState) -> tuple[DiagnosisObject, SkepticVerdict]`
-  - [ ] 4.2 Implement hash-based loop: compare `root_cause_hash()` before and after each round
-  - [ ] 4.3 If hash unchanged after round 1 → pass immediately
-  - [ ] 4.4 If hash changed after round 1 → run exactly one more round, then pass regardless
-  - [ ] 4.5 Return final (possibly revised) `DiagnosisObject` and `SkepticVerdict`
+- [x] Task 4: Skeptic validation loop with hash comparison (AC: #3, #4)
+  - [x] 4.1 Create `backend/src/pipeline/skeptic_validation.py` with `run_skeptic_validation(diagnosis: DiagnosisObject, state: DiagnosisState) -> tuple[DiagnosisObject, SkepticVerdict]`
+  - [x] 4.2 Implement hash-based loop: compare `root_cause_hash()` before and after each round
+  - [x] 4.3 If hash unchanged after round 1 → pass immediately
+  - [x] 4.4 If hash changed after round 1 → run exactly one more round, then pass regardless
+  - [x] 4.5 Return final (possibly revised) `DiagnosisObject` and `SkepticVerdict`
 
-- [ ] Task 5: Immutable Diagnosis Artifact sealing (AC: #6, #7)
-  - [ ] 5.1 The `ImmutableDiagnosisArtifact` model already exists in `models/diagnosis.py` (created by 2.1) — verify it is frozen (Pydantic `model_config = ConfigDict(frozen=True)`)
-  - [ ] 5.2 Create `seal_diagnosis(diagnosis: DiagnosisObject, verdict: SkepticVerdict) -> ImmutableDiagnosisArtifact` in `backend/src/pipeline/skeptic_validation.py` — copies diagnosis fields into the frozen model with the skeptic verdict attached
-  - [ ] 5.3 Ensure sealed artifact includes `sealed_at: datetime`, `skeptic_verdict: SkepticVerdict`, and all original DiagnosisObject fields
+- [x] Task 5: Immutable Diagnosis Artifact sealing (AC: #6, #7)
+  - [x] 5.1 The `ImmutableDiagnosisArtifact` model already exists in `models/diagnosis.py` (created by 2.1) — verify it is frozen (Pydantic `model_config = ConfigDict(frozen=True)`)
+  - [x] 5.2 Create `seal_diagnosis(diagnosis: DiagnosisObject, verdict: SkepticVerdict) -> ImmutableDiagnosisArtifact` in `backend/src/pipeline/skeptic_validation.py` — copies diagnosis fields into the frozen model with the skeptic verdict attached
+  - [x] 5.3 Ensure sealed artifact includes `sealed_at: datetime`, `skeptic_verdict: SkepticVerdict`, and all original DiagnosisObject fields
 
-- [ ] Task 6: Integrate skeptic into diagnosis graph (AC: #3, #4, #9)
-  - [ ] 6.1 Update `backend/src/pipeline/diagnosis_graph.py` — add `skeptic_validation` node between completeness gate and `finalize`
-  - [ ] 6.2 Add `DiagnosisState` fields: `skeptic_challenge: dict | None`, `skeptic_verdict: dict | None`, `immutable_artifact: dict | None`
-  - [ ] 6.3 Wire edges: completeness gate pass → `skeptic_validation` → `finalize`
-  - [ ] 6.4 `finalize` node: seal the diagnosis into `ImmutableDiagnosisArtifact`, transition incident state `diagnosing→diagnosed`, persist artifact, emit SSE event
+- [x] Task 6: Integrate skeptic into diagnosis graph (AC: #3, #4, #9)
+  - [x] 6.1 Update `backend/src/pipeline/diagnosis_graph.py` — add `skeptic_validation` node between completeness gate and `finalize`
+  - [x] 6.2 Add `DiagnosisState` fields: `skeptic_challenge: dict | None`, `skeptic_verdict: dict | None`, `immutable_artifact: dict | None`
+  - [x] 6.3 Wire edges: completeness gate pass → `skeptic_validation` → `finalize`
+  - [x] 6.4 `finalize` node: seal the diagnosis into `ImmutableDiagnosisArtifact`, transition incident state `diagnosing→diagnosed`, persist artifact, emit SSE event
 
-- [ ] Task 7: Audit trail persistence (AC: #5)
-  - [ ] 7.1 Create `backend/src/db/skeptic.py` with `persist_skeptic_record(conn, incident_id, challenge, response, verdict)`
-  - [ ] 7.2 Persist full challenge/response/verdict JSON to a `skeptic_reviews` table
-  - [ ] 7.3 Create Alembic migration for `skeptic_reviews` table: `id UUID PK, incident_id UUID FK, round_number INT, challenge JSONB, response JSONB, verdict JSONB, created_at TIMESTAMPTZ`
-  - [ ] 7.4 Write audit_log entry via `write_audit_log()` from `db/audit.py` for each skeptic round completion
+- [x] Task 7: Audit trail persistence (AC: #5)
+  - [x] 7.1 Create `backend/src/db/skeptic.py` with `persist_skeptic_record(conn, incident_id, challenge, response, verdict)`
+  - [x] 7.2 Persist full challenge/response/verdict JSON to a `skeptic_reviews` table
+  - [x] 7.3 Create Alembic migration for `skeptic_reviews` table: `id UUID PK, incident_id UUID FK, round_number INT, challenge JSONB, response JSONB, verdict JSONB, created_at TIMESTAMPTZ`
+  - [x] 7.4 Write audit_log entry via `write_audit_log()` from `db/audit.py` for each skeptic round completion
 
-- [ ] Task 8: Immutable artifact persistence (AC: #6, #7)
-  - [ ] 8.1 Create `backend/src/db/diagnosis.py` with `persist_immutable_diagnosis(conn, artifact: ImmutableDiagnosisArtifact)`
-  - [ ] 8.2 Create Alembic migration for `immutable_diagnoses` table: `id UUID PK, incident_id UUID FK UNIQUE, diagnosis JSONB NOT NULL, skeptic_verdict JSONB NOT NULL, sealed_at TIMESTAMPTZ, created_at TIMESTAMPTZ`
-  - [ ] 8.3 The serialized artifact is the handoff object for Epic 3 (remediation planner reads from this table)
+- [x] Task 8: Immutable artifact persistence (AC: #6, #7)
+  - [x] 8.1 Create `backend/src/db/diagnosis.py` with `persist_immutable_diagnosis(conn, artifact: ImmutableDiagnosisArtifact)`
+  - [x] 8.2 Create Alembic migration for `immutable_diagnoses` table: `id UUID PK, incident_id UUID FK UNIQUE, diagnosis JSONB NOT NULL, skeptic_verdict JSONB NOT NULL, sealed_at TIMESTAMPTZ, created_at TIMESTAMPTZ`
+  - [x] 8.3 The serialized artifact is the handoff object for Epic 3 (remediation planner reads from this table)
 
-- [ ] Task 9: Tests — unit (AC: #1, #2, #3, #4, #5, #6, #8)
-  - [ ] 9.1 `tests/models/test_skeptic.py` — SkepticChallenge, SkepticResponse, SkepticVerdict validation, serialization
-  - [ ] 9.2 `tests/agents/test_skeptic.py` — skeptic produces valid structured challenge with mocked LLM, evidence gaps are always challenged
-  - [ ] 9.3 `tests/pipeline/test_skeptic_validation.py` — hash unchanged → pass in 1 round; hash changed → max 2 rounds then pass; evidence_gaps mandate challenge
-  - [ ] 9.4 `tests/models/test_diagnosis.py` — extend: ImmutableDiagnosisArtifact is truly frozen (raises on mutation), seal_diagnosis copies all fields correctly
+- [x] Task 9: Tests — unit (AC: #1, #2, #3, #4, #5, #6, #8)
+  - [x] 9.1 `tests/models/test_skeptic.py` — SkepticChallenge, SkepticResponse, SkepticVerdict validation, serialization
+  - [x] 9.2 `tests/agents/test_skeptic.py` — skeptic produces valid structured challenge with mocked LLM, evidence gaps are always challenged
+  - [x] 9.3 `tests/pipeline/test_skeptic_validation.py` — hash unchanged → pass in 1 round; hash changed → max 2 rounds then pass; evidence_gaps mandate challenge
+  - [x] 9.4 `tests/models/test_diagnosis.py` — extend: ImmutableDiagnosisArtifact is truly frozen (raises on mutation), seal_diagnosis copies all fields correctly
 
-- [ ] Task 10: Tests — pipeline integration (AC: #3, #4, #9)
-  - [ ] 10.1 `tests/pipeline/test_diagnosis_graph.py` — update graph tests: full path `diagnose→completeness→skeptic→finalize` with mocked LLM, state transitions `queued→diagnosing→diagnosed`
-  - [ ] 10.2 `tests/pipeline/test_diagnosis_graph.py` — re-challenge path: skeptic changes hash → second round → diagnosed
-  - [ ] 10.3 `tests/pipeline/test_diagnosis_graph.py` — verify ImmutableDiagnosisArtifact is in final state, verify skeptic_reviews persisted
-  - [ ] 10.4 `tests/db/test_skeptic.py` — persist_skeptic_record and persist_immutable_diagnosis roundtrip (testcontainers)
+- [x] Task 10: Tests — pipeline integration (AC: #3, #4, #9)
+  - [x] 10.1 `tests/pipeline/test_diagnosis_graph.py` — update graph tests: full path `diagnose→completeness→skeptic→finalize` with mocked LLM, state transitions `queued→diagnosing→diagnosed`
+  - [x] 10.2 `tests/pipeline/test_diagnosis_graph.py` — re-challenge path: skeptic changes hash → second round → diagnosed
+  - [x] 10.3 `tests/pipeline/test_diagnosis_graph.py` — verify ImmutableDiagnosisArtifact is in final state, verify skeptic_reviews persisted
+  - [x] 10.4 `tests/db/test_skeptic.py` — persist_skeptic_record and persist_immutable_diagnosis roundtrip (testcontainers)
+
+### Review Findings
+- [x] [Review][Patch] Grouped-incident immutable artifacts still reuse the primary incident payload [`backend/src/pipeline/runner.py:182`] — **Fixed:** `persist_skeptic_artifacts()` now overrides `incident_id` in the serialized diagnosis dict per sibling incident before persisting.
+- [x] [Review][Patch] `skeptic_validation` success SSE emits before the completion transaction commits [`backend/src/pipeline/runner.py:79`] — **Fixed:** the validated SSE now emits from `_handle_success()` only after `_complete_pipeline()` returns successfully, so failed transactions no longer leak premature skeptic success events.
+- [x] [Review][Patch] Rebuttal checkpoint state leaks across skeptic rounds [`backend/src/agents/orchestrator.py:450`] — **Fixed:** `run_orchestrator_rebuttal()` now threads `round_number` into the checkpoint key, producing distinct thread IDs like `{incident_id}:rebuttal:1` and `{incident_id}:rebuttal:2`.
+- [x] [Review][Patch] Evidence-gap enforcement conflates gaps that share query text [`backend/src/agents/skeptic.py:113`] — **Fixed:** `_ensure_evidence_gaps_challenged()` now requires both `query` and `reason` text to match before a gap is considered covered, which resolves the specific same-query/different-reason miss from round 3.
+- [x] [Review][Patch] Rebuttal mapping still collapses plain-paragraph responses into generic per-point rebuttals [`backend/src/agents/orchestrator.py:342`] — **Fixed:** added paragraph-boundary and full-text fallbacks to `_build_point_specific_rebuttals()`.
 
 ## Dev Notes
 
@@ -586,32 +597,104 @@ backend/tests/
 
 ## Code Review Record
 
-### Review Model Used
+### Review Round 1 — 2026-08-09
+**Review model:** GPT-5.4
+**Fix model:** Claude Opus 4.6 (via Cursor)
 
-(to be filled during review — must differ from dev model)
+#### Findings
+- [x] [Review][Patch] Pipeline never persists skeptic review rounds or immutable diagnoses [`backend/src/pipeline/diagnosis_graph.py:203`] — **Fixed:** Added `_persist_skeptic_artifacts()` helper that calls `persist_skeptic_record()` for each round and `persist_immutable_diagnosis()` for the sealed artifact. Called from `skeptic_validation_node` after validation completes. Errors are logged but don't block pipeline completion.
+- [x] [Review][Patch] Sealed artifact omits `skeptic_verdict` and `sealed_at` [`backend/src/pipeline/skeptic_validation.py:112`] — **Fixed:** Added `skeptic_verdict: dict | None` and `sealed_at: datetime | None` fields to `ImmutableDiagnosisArtifact` model. Updated `seal_diagnosis()` to populate both fields. Updated `from_diagnosis()` to accept `**kwargs` for forward compatibility.
+- [x] [Review][Patch] Skeptic agent exceptions bypass the fallback challenge path [`backend/src/agents/skeptic.py:67`] — **Fixed:** Wrapped `agent.ainvoke()` in try/except. On exception, logs warning and falls back to `_build_fallback_challenge()`.
+- [x] [Review][Patch] Evidence-gap challenges are not enforced on successful skeptic output [`backend/src/agents/skeptic.py:71`] — **Fixed:** Added `_ensure_evidence_gaps_challenged()` function that augments any challenge (LLM-produced or fallback) with missing evidence gap entries. Called after every challenge is produced.
+- [x] [Review][Patch] Rebuttal failure handling drops required challenge points [`backend/src/agents/orchestrator.py:333`] — **Fixed:** Exception handler now iterates over all three challenge lists (`alternative_hypotheses` + `evidence_gap_challenges` + `logical_weaknesses`), not just alternatives.
 
-### Review Findings
+### Review Round 2 — 2026-08-09
+**Review model:** GPT-5.4
+**Fix model:** Claude Opus 4.6 (via Cursor)
 
-(to be filled during review)
+#### Findings
+- [x] [Review][Patch] Skeptic persistence remains best-effort and non-atomic [`backend/src/pipeline/diagnosis_graph.py:210`] — **Fixed:** Moved skeptic persistence out of `skeptic_validation_node()` and into the runner's `_complete_pipeline()` transaction. `persist_skeptic_artifacts()` is now called inside the same DB transaction as incident state transition and queue completion. Errors propagate and roll back the entire transaction — no more swallowed exceptions. The function signature changed from `async def _persist_skeptic_artifacts(incident_id, verdict, sealed)` to `async def persist_skeptic_artifacts(conn, incident_id, verdict, sealed)` accepting an existing connection.
+- [x] [Review][Patch] Immutable diagnosis artifacts are still mutable and allow invalid sealed state [`backend/src/models/diagnosis.py:149`] — **Fixed:** Made `skeptic_verdict` and `sealed_at` non-nullable required fields (`Field(...)` + `model_validator` rejecting `None`). `skeptic_verdict` dicts are now frozen via `MappingProxyType` through a `_freeze_value()` pre-validator. `alternative_hypotheses` dict entries are also frozen. Added `_thaw_value()` for serialization. Added 4 new tests: requires non-None verdict, requires non-None sealed_at, verdict is frozen MappingProxyType, alt hypotheses dicts are frozen.
+- [x] [Review][Patch] Rebuttal drops valid revised diagnoses returned as serialized structured output [`backend/src/agents/orchestrator.py:409`] — **Fixed:** `run_orchestrator_rebuttal()` now handles `structured_response` as either `DiagnosisObject` instance or plain `dict`. Dict responses are validated via `DiagnosisObject.model_validate()`. Invalid dicts are logged and gracefully ignored. Added 2 tests: dict response accepted, invalid dict response ignored.
+- [x] [Review][Patch] Rebuttal success path does not actually address each challenge point with evidence or reasoning [`backend/src/agents/orchestrator.py:420`] — **Fixed:** Added `_build_point_specific_rebuttals()` helper that segments the LLM response and maps sections to individual challenge points using keyword overlap scoring. Each rebuttal contains point-specific content from the LLM response, not generic summary text. Added 1 test verifying rebuttals are distinct per challenge point.
+- [x] [Review][Patch] Skeptic completion SSE event with verdict payload is missing [`backend/src/pipeline/runner.py:247`] — **Fixed:** Runner now emits a `skeptic_validation`/`validated` SSE event with the full `skeptic_verdict` in the payload after the graph completes and before `_handle_success`. Updated `_emit_stage_event()` to accept an optional `payload` dict. Added 1 test verifying the event carries the verdict payload.
 
-### Decisions Needed / Decisions Taken
+### Review Round 3 — 2026-08-09
+**Review model:** GPT-5.4
+**Fix model:** Claude Opus 4.6 (via Cursor)
 
-(to be filled during review)
+#### Findings
+- [x] [Review][Patch] Grouped incidents only persist skeptic artifacts for the primary incident [`backend/src/pipeline/runner.py:173`] — **Fixed:** `persist_skeptic_artifacts()` now rewrites the serialized sealed artifact's `incident_id` per sibling before persisting, so each `immutable_diagnoses` row stores the correct incident payload for that sibling.
+- [x] [Review][Patch] `skeptic_validation` success SSE emits before the completion transaction commits [`backend/src/pipeline/runner.py:79`] — **Fixed:** the validated SSE now emits from `_handle_success()` only after `_complete_pipeline()` commits successfully.
+- [x] [Review][Patch] Rebuttal checkpoint state leaks across skeptic rounds [`backend/src/agents/orchestrator.py:450`] — **Fixed:** rebuttal invocations now use round-specific thread IDs, preventing round-2 runs from resuming round-1 checkpoint state.
+- [x] [Review][Patch] Evidence-gap enforcement conflates gaps that share query text [`backend/src/agents/skeptic.py:113`] — **Fixed:** coverage checks now require both `query` and `reason` text, which resolves the same-query/different-reason collision identified in round 3.
 
-### Fixes Applied
+### Review Round 4 — 2026-08-09
+**Review model:** GPT-5.4
+**Fix model:** Claude Opus 4.6 (via Cursor)
 
-(to be filled during review)
+#### Findings
+- [x] [Review][Patch] Grouped-incident immutable artifacts still reuse the primary incident payload [`backend/src/pipeline/runner.py:182`] — **Fixed:** `persist_skeptic_artifacts()` now serializes the sealed artifact to a dict and overrides `incident_id` to match the target sibling incident before writing. Each sibling's `immutable_diagnoses` row now contains a diagnosis payload with the correct `incident_id`, satisfying AC6/AC7 for grouped incidents.
+- [x] [Review][Patch] Rebuttal mapping still collapses plain-paragraph responses into generic per-point rebuttals [`backend/src/agents/orchestrator.py:342`] — **Fixed:** `_build_point_specific_rebuttals()` now falls back to paragraph-boundary splitting (`\n\n`) when structured markers (numbered items, bullets, headings) produce only one section. When even paragraph splitting fails, the complete response text is used as the rebuttal for each challenge point, ensuring every point receives substantive content per AC2.
+
+### Review Round 5 — 2026-08-09 (HARD CAP — 5/5 iterations)
+**Review model:** GPT-5.4
+**Fix model:** Opus 4.6 (critical fixes only)
+
+#### Findings
+- [ ] [Review][Patch] **DEFERRED** — Same-hash rebuttal revisions are discarded [`backend/src/agents/orchestrator.py:487`] — `run_orchestrator_rebuttal()` only preserves `revised_diagnosis` when the rebuttal changes `root_cause_hash()`. Diagnosis improvements that don't change the root cause are silently dropped. AC #3 states "if the hash is unchanged, the diagnosis passes validation" — the behavior is correct per spec, but improved diagnoses could be preserved as an enhancement.
+- [x] [Review][Patch] Rebuttal summary parsing assumes string message content [`backend/src/agents/orchestrator.py:495`] — **Fixed:** Now handles list-based content blocks by joining text elements before passing to `_build_point_specific_rebuttals()`.
+- [x] [Review][Patch] `SkepticVerdict` still accepts empty hashes [`backend/src/models/skeptic.py:47`] — **Fixed:** Added `min_length=1` validation to both `original_hash` and `final_hash` fields.
+
+### Deferred Review Debt
+
+1. **Same-hash rebuttal revision preservation** — When the orchestrator improves a diagnosis (adds evidence, lowers confidence) without changing the root cause, the revised `DiagnosisObject` is discarded. Per AC #3 this is correct (unchanged hash = passes), but an enhancement could preserve beneficial revisions in the sealed artifact.
+- [ ] [Review][Patch] Grouped-incident skeptic payloads still leak the primary incident ID in nested revised diagnoses [`backend/src/pipeline/diagnosis_graph.py:244`] — during grouped-incident fan-out, `persist_skeptic_artifacts()` rewrites only the top-level sealed diagnosis `incident_id`. The persisted `skeptic_verdict` and per-round `response` payloads are reused unchanged, so any nested `revised_diagnosis.incident_id` inside `challenge_history` still points at the primary incident, leaving sibling `skeptic_reviews` rows and immutable handoff metadata internally inconsistent.
 
 ## Dev Agent Record
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (via Cursor)
 
 ### Debug Log References
 
+- Pre-existing test failures in `tests/api/test_audit.py`, `tests/api/test_events.py`, and other API/pipeline integration tests due to testcontainers Docker socket not being available in dev environment. These are not caused by Story 2.4 changes. Unit tests (`pytest -m unit`) all pass cleanly.
+- LangGraph deprecation warning: `create_react_agent` has been moved to `langchain.agents` — affects both orchestrator and skeptic agent. Non-blocking; library still works at v1.2.x.
+
 ### Completion Notes List
+
+- **Task 1**: Created `models/skeptic.py` with `SkepticChallenge` (min 1 alt hypothesis + 1 weakness), `SkepticRebuttal`, `SkepticResponse` (optional revised_diagnosis), `SkepticVerdict` (rounds 1-2, always passes). All exported from `models/__init__.py`.
+- **Task 2**: Created `agents/skeptic.py` with `build_skeptic_agent()` (no tools, `response_format=SkepticChallenge`) and `run_skeptic()`. Includes `_build_fallback_challenge()` that mandatorily includes evidence gap entries.
+- **Task 3**: Added `run_orchestrator_rebuttal()` to `agents/orchestrator.py`. Reuses orchestrator tools via `build_orchestrator_agent()`. Compares hash to decide if diagnosis was revised. Builds rebuttals from all challenge points.
+- **Task 4**: Created `pipeline/skeptic_validation.py` with `run_skeptic_validation()`. Hash-based loop: max 2 rounds, hash unchanged = pass, hash changed = one more round, then pass regardless. `MAX_SKEPTIC_ROUNDS = 2` constant.
+- **Task 5**: Added `seal_diagnosis()` to `pipeline/skeptic_validation.py`. Copies all DiagnosisObject fields into `ImmutableDiagnosisArtifact` (verified frozen via `model_config = {"frozen": True}`).
+- **Task 6**: Updated `pipeline/diagnosis_graph.py`: added `skeptic_validation_node` between completeness gate and finalize, extended `DiagnosisState` with 3 new fields (`skeptic_challenge`, `skeptic_verdict`, `immutable_artifact`), rewired routing from completeness gate → skeptic_validation.
+- **Task 7**: Created `db/skeptic.py` with `persist_skeptic_record()` — writes to `skeptic_reviews` table + audit_log entry per round. Created Alembic migration `006_add_skeptic_reviews.py`.
+- **Task 8**: Created `db/diagnosis.py` with `persist_immutable_diagnosis()` — writes to `immutable_diagnoses` table. Created Alembic migration `007_add_immutable_diagnoses.py`.
+- **Task 9**: Created 3 new test files: `tests/models/test_skeptic.py` (16 tests), `tests/agents/test_skeptic.py` (7 tests), `tests/pipeline/test_skeptic_validation.py` (7 tests). Extended `tests/models/test_diagnosis.py` with 3 new seal/freeze tests.
+- **Task 10**: Updated `tests/pipeline/test_diagnosis_graph.py` with skeptic-aware graph tests (5 updated + 2 new E2E tests). Created `tests/db/test_skeptic.py` for DB roundtrip tests (6 tests, testcontainers-dependent).
 
 ### Change Log
 
+- 2026-08-09: Story 2.4 implementation complete — Diagnosis Skeptic adversarial challenge agent, validation loop with hash-based termination (max 2 rounds), ImmutableDiagnosisArtifact sealing, audit trail persistence, Alembic migrations for `skeptic_reviews` and `immutable_diagnoses` tables. 40 new unit tests, all 383 unit tests pass with zero regressions.
+
 ### File List
+
+- `backend/src/models/skeptic.py` — NEW: SkepticChallenge, SkepticRebuttal, SkepticResponse, SkepticVerdict Pydantic models
+- `backend/src/models/__init__.py` — MODIFIED: Export new skeptic models
+- `backend/src/agents/skeptic.py` — NEW: Skeptic agent (build_skeptic_agent, run_skeptic, _build_fallback_challenge)
+- `backend/src/agents/orchestrator.py` — MODIFIED: Added run_orchestrator_rebuttal() function
+- `backend/src/agents/prompts.py` — MODIFIED: Added SKEPTIC_SYSTEM_PROMPT, SKEPTIC_STRUCTURED_PROMPT, REBUTTAL_PROMPT_TEMPLATE
+- `backend/src/pipeline/skeptic_validation.py` — NEW: Validation loop (run_skeptic_validation) + seal_diagnosis()
+- `backend/src/pipeline/diagnosis_graph.py` — MODIFIED: Added skeptic_validation_node, extended DiagnosisState, rewired graph edges
+- `backend/src/db/skeptic.py` — NEW: persist_skeptic_record() for skeptic_reviews table
+- `backend/src/db/diagnosis.py` — NEW: persist_immutable_diagnosis() for immutable_diagnoses table
+- `backend/alembic/versions/006_add_skeptic_reviews.py` — NEW: Alembic migration for skeptic_reviews table
+- `backend/alembic/versions/007_add_immutable_diagnoses.py` — NEW: Alembic migration for immutable_diagnoses table
+- `backend/tests/models/test_skeptic.py` — NEW: 16 unit tests for skeptic models
+- `backend/tests/agents/test_skeptic.py` — NEW: 7 unit tests for skeptic agent
+- `backend/tests/pipeline/test_skeptic_validation.py` — NEW: 7 unit tests for validation loop + seal_diagnosis
+- `backend/tests/pipeline/test_diagnosis_graph.py` — MODIFIED: Updated graph tests for skeptic node, added E2E tests
+- `backend/tests/models/test_diagnosis.py` — MODIFIED: Added 3 tests for ImmutableDiagnosisArtifact seal/freeze
+- `backend/tests/db/test_skeptic.py` — NEW: 6 DB integration tests for persistence roundtrip

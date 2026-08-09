@@ -431,6 +431,141 @@ class TestAtomicPipelineCompletion:
         mock_emit.assert_not_called()
 
 
+class TestSkepticArtifactPersistenceAllIncidents:
+    """_persist_skeptic_artifacts_in_txn persists for ALL incidents in the RCE group."""
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_skeptic_artifacts_persisted_for_all_siblings(self):
+        """Skeptic artifacts are persisted for every incident, not just the primary."""
+        from src.pipeline.runner import _persist_skeptic_artifacts_in_txn
+
+        ids = [uuid.uuid4(), uuid.uuid4(), uuid.uuid4()]
+
+        mock_conn = AsyncMock()
+
+        final_state = {
+            "skeptic_verdict": {
+                "passed": True,
+                "rounds_completed": 1,
+                "original_hash": "abc123",
+                "final_hash": "abc123",
+                "challenge_history": [],
+                "verdict_reasoning": "Validated",
+            },
+            "immutable_artifact": {
+                "id": str(uuid.uuid4()),
+                "incident_id": str(ids[0]),
+                "root_cause_component": "workload",
+                "failure_mode": "crash-loop-backoff",
+                "root_cause_code": "workload/crash-loop-backoff",
+                "causal_chain": ["step1"],
+                "affected_resources": ["pod/test"],
+                "evidence": [],
+                "evidence_gaps": [],
+                "confidence": 0.85,
+                "agent_summary": "Test",
+                "coverage_gaps": [],
+                "alternative_hypotheses": [],
+                "created_at": "2026-08-09T00:00:00Z",
+                "skeptic_verdict": {"passed": True},
+                "sealed_at": "2026-08-09T00:00:01Z",
+            },
+        }
+
+        with patch(
+            "src.pipeline.diagnosis_graph.persist_skeptic_artifacts",
+            new_callable=AsyncMock,
+        ) as mock_persist:
+            await _persist_skeptic_artifacts_in_txn(mock_conn, ids, final_state)
+
+        assert mock_persist.call_count == 3
+        persisted_ids = [call.args[1] for call in mock_persist.call_args_list]
+        assert set(persisted_ids) == {str(i) for i in ids}
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_skeptic_artifacts_noop_when_no_verdict(self):
+        """When verdict or artifact is missing, nothing is persisted."""
+        from src.pipeline.runner import _persist_skeptic_artifacts_in_txn
+
+        mock_conn = AsyncMock()
+        await _persist_skeptic_artifacts_in_txn(mock_conn, [uuid.uuid4()], {})
+
+
+class TestSSEAfterTransactionCommit:
+    """Skeptic SSE events are emitted only after the completion transaction commits."""
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_validated_sse_emitted_after_commit(self):
+        """The skeptic_validation/validated SSE is emitted by _handle_success,
+        AFTER _complete_pipeline commits, not before."""
+        from src.pipeline.runner import _handle_success
+
+        ids = [uuid.uuid4()]
+        item = _make_queue_item(incident_id=ids[0])
+        final_state = {"skeptic_verdict": {"passed": True, "rounds_completed": 1}}
+
+        emit_calls = []
+
+        async def track_emit(iid, stage, state, payload=None):
+            emit_calls.append((stage, state))
+
+        with (
+            patch("src.pipeline.runner._complete_pipeline", new_callable=AsyncMock, return_value=True),
+            patch("src.pipeline.runner._emit_stage_event", side_effect=track_emit),
+        ):
+            await _handle_success(item, final_state, ids)
+
+        stages = [c[0] for c in emit_calls]
+        assert "skeptic_validation" in stages
+        assert "diagnosed" in stages
+        assert stages.index("skeptic_validation") < stages.index("diagnosed")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_no_validated_sse_when_commit_fails(self):
+        """When _complete_pipeline fails, no skeptic SSE events are emitted."""
+        from src.pipeline.runner import _handle_success
+
+        ids = [uuid.uuid4()]
+        item = _make_queue_item(incident_id=ids[0])
+        final_state = {"skeptic_verdict": {"passed": True}}
+
+        with (
+            patch("src.pipeline.runner._complete_pipeline", new_callable=AsyncMock, return_value=False),
+            patch("src.pipeline.runner._emit_stage_event", new_callable=AsyncMock) as mock_emit,
+        ):
+            await _handle_success(item, final_state, ids)
+
+        mock_emit.assert_not_called()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_no_validated_sse_when_no_verdict(self):
+        """When there is no skeptic_verdict, no validated SSE is emitted."""
+        from src.pipeline.runner import _handle_success
+
+        ids = [uuid.uuid4()]
+        item = _make_queue_item(incident_id=ids[0])
+
+        emit_calls = []
+
+        async def track_emit(iid, stage, state, payload=None):
+            emit_calls.append((stage, state))
+
+        with (
+            patch("src.pipeline.runner._complete_pipeline", new_callable=AsyncMock, return_value=True),
+            patch("src.pipeline.runner._emit_stage_event", side_effect=track_emit),
+        ):
+            await _handle_success(item, {}, ids)
+
+        stages = [c[0] for c in emit_calls]
+        assert "skeptic_validation" not in stages
+        assert "diagnosed" in stages
+
+
 class TestDispatcherTransactionalTransitions:
     """_transition_incidents_to_diagnosing wraps siblings in a single transaction."""
 

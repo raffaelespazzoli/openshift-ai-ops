@@ -75,6 +75,7 @@ async def run_diagnosis_pipeline(item: dict) -> None:
 
         for iid in all_ids:
             await _emit_stage_event(iid, "finalize", "finalizing")
+
         await _handle_success(item, final_state, all_ids)
     except Exception:
         logger.exception(
@@ -141,13 +142,16 @@ async def _complete_pipeline(
     item: dict,
     incident_ids: list[uuid.UUID],
     target: IncidentState,
+    final_state: dict | None = None,
 ) -> bool:
     """Atomically transition all incidents AND complete the queue item (AD-19).
 
-    Wraps both incident state writes and queue completion in a single DB
-    transaction so they either all succeed or all roll back together. This
-    prevents the state where incidents reach a terminal state but the queue
-    row remains 'processing' (which creates poison retries).
+    Wraps incident state writes, queue completion, and skeptic artifact
+    persistence in a single DB transaction so they either all succeed or
+    all roll back together. This prevents the state where incidents reach
+    a terminal state but the queue row remains 'processing' (which creates
+    poison retries), and ensures the audit trail and immutable handoff
+    record are always present when the pipeline reports success.
 
     Returns True only when the entire transaction committed successfully.
     """
@@ -157,6 +161,11 @@ async def _complete_pipeline(
             async with conn.transaction():
                 await _transition_all_incidents(conn, incident_ids, target)
                 await mark_pipeline_complete(conn, item["id"])
+
+                if final_state and target == IncidentState.DIAGNOSED:
+                    await _persist_skeptic_artifacts_in_txn(
+                        conn, incident_ids, final_state,
+                    )
     except Exception:
         logger.warning(
             "Pipeline completion failed — transaction rolled back, queue slot NOT freed",
@@ -168,6 +177,29 @@ async def _complete_pipeline(
         )
         return False
     return True
+
+
+async def _persist_skeptic_artifacts_in_txn(
+    conn,
+    incident_ids: list[uuid.UUID],
+    final_state: dict,
+) -> None:
+    """Persist skeptic artifacts for ALL incidents in the RCE group."""
+    from .diagnosis_graph import persist_skeptic_artifacts
+    from ..models.diagnosis import ImmutableDiagnosisArtifact
+    from ..models.skeptic import SkepticVerdict
+
+    verdict_dict = final_state.get("skeptic_verdict")
+    artifact_dict = final_state.get("immutable_artifact")
+
+    if not verdict_dict or not artifact_dict:
+        return
+
+    verdict = SkepticVerdict.model_validate(verdict_dict)
+    sealed = ImmutableDiagnosisArtifact.model_validate(artifact_dict)
+
+    for iid in incident_ids:
+        await persist_skeptic_artifacts(conn, str(iid), verdict, sealed)
 
 
 async def _handle_success(
@@ -184,7 +216,9 @@ async def _handle_success(
     if all_ids is None:
         all_ids = await _get_all_incident_ids(item)
 
-    committed = await _complete_pipeline(item, all_ids, IncidentState.DIAGNOSED)
+    committed = await _complete_pipeline(
+        item, all_ids, IncidentState.DIAGNOSED, final_state=final_state,
+    )
 
     if not committed:
         logger.error(
@@ -195,6 +229,14 @@ async def _handle_success(
             },
         )
         return
+
+    skeptic_verdict = final_state.get("skeptic_verdict") if final_state else None
+    if skeptic_verdict:
+        for iid in all_ids:
+            await _emit_stage_event(
+                iid, "skeptic_validation", "validated",
+                payload={"skeptic_verdict": skeptic_verdict},
+            )
 
     for iid in all_ids:
         await _emit_stage_event(iid, "diagnosed", "diagnosed")
@@ -248,6 +290,7 @@ async def _emit_stage_event(
     incident_id: uuid.UUID,
     stage: str,
     state: str,
+    payload: dict | None = None,
 ) -> None:
     """Emit an SSE event for pipeline stage transitions (AD-24)."""
     try:
@@ -260,6 +303,7 @@ async def _emit_stage_event(
                 incident_id=incident_id,
                 stage=stage,
                 state=state,
+                payload=payload or {},
             ),
         )
     except Exception:

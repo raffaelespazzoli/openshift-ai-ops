@@ -25,7 +25,13 @@ from ..models.diagnosis import (
 )
 from .completeness_gate import evaluate_completeness
 from .llm_client import get_chat_model
-from .prompts import STRUCTURED_OUTPUT_PROMPT, build_diagnosis_prompt, get_system_prompt
+from ..models.skeptic import SkepticChallenge, SkepticRebuttal, SkepticResponse
+from .prompts import (
+    REBUTTAL_PROMPT_TEMPLATE,
+    STRUCTURED_OUTPUT_PROMPT,
+    build_diagnosis_prompt,
+    get_system_prompt,
+)
 from .tools import get_orchestrator_tools
 
 _skill_registry = None
@@ -331,3 +337,190 @@ def _ledger_entry(parsed: dict, max_summary: int) -> dict:
         "result_summary": summary,
         "no_hit": is_runbook_no_hit,
     }
+
+
+def _build_point_specific_rebuttals(
+    challenge: SkepticChallenge,
+    summary: str,
+) -> list[SkepticRebuttal]:
+    """Build rebuttals that map the LLM response to individual challenge points.
+
+    Splits the summary into sections separated by common markers (numbered
+    items, bullet points, headings) and assigns relevant excerpts to each
+    challenge point via keyword-overlap scoring. When structured segmentation
+    fails (e.g. paragraph-style LLM output), falls back to paragraph-boundary
+    splitting, then to using the complete response for every point.
+    """
+    import re
+
+    all_challenges: list[tuple[str, str]] = []
+    for point in challenge.alternative_hypotheses:
+        all_challenges.append(("alternative_hypothesis", point))
+    for point in challenge.evidence_gap_challenges:
+        all_challenges.append(("evidence_gap", point))
+    for point in challenge.logical_weaknesses:
+        all_challenges.append(("logical_weakness", point))
+
+    sections = re.split(r'\n(?=\d+[\.\):]|\*\s|-\s|#{1,3}\s)', summary.strip())
+    sections = [s.strip() for s in sections if s.strip()]
+
+    if len(sections) <= 1 and len(all_challenges) > 1:
+        paragraphs = re.split(r'\n\s*\n', summary.strip())
+        paragraphs = [p.strip() for p in paragraphs if p.strip()]
+        if len(paragraphs) > 1:
+            sections = paragraphs
+
+    rebuttals: list[SkepticRebuttal] = []
+    for idx, (category, point) in enumerate(all_challenges):
+        if len(sections) <= 1:
+            best_section = summary.strip()
+        else:
+            if idx < len(sections):
+                excerpt = sections[idx]
+            elif sections:
+                excerpt = sections[-1]
+            else:
+                excerpt = summary
+
+            point_keywords = set(point.lower().split())
+            best_section = excerpt
+            best_score = 0
+            for section in sections:
+                section_words = set(section.lower().split())
+                overlap = len(point_keywords & section_words)
+                if overlap > best_score:
+                    best_score = overlap
+                    best_section = section
+
+        rebuttals.append(SkepticRebuttal(
+            challenge_point=point,
+            rebuttal=best_section[:500],
+            additional_evidence=f"[{category}]",
+        ))
+    return rebuttals
+
+
+async def run_orchestrator_rebuttal(
+    diagnosis: DiagnosisObject,
+    challenge: SkepticChallenge,
+    state: dict,
+    round_number: int = 1,
+) -> SkepticResponse:
+    """Orchestrator responds to skeptic challenge, possibly revising the diagnosis.
+
+    The rebuttal uses the same tools as the orchestrator (MCP cluster query,
+    runbook RAG) to gather additional evidence to refute the challenge. If it
+    agrees with a challenge, it may produce a revised DiagnosisObject.
+
+    Args:
+        diagnosis: The current DiagnosisObject being challenged.
+        challenge: The SkepticChallenge to respond to.
+        state: The DiagnosisState dict for context.
+
+    Returns:
+        A SkepticResponse with rebuttals and optionally a revised diagnosis.
+    """
+    incident_id = state.get("incident_id", "unknown")
+    logger.info(
+        "Orchestrator rebuttal starting",
+        extra={"incident_id": incident_id},
+    )
+
+    prompt_text = REBUTTAL_PROMPT_TEMPLATE.format(
+        diagnosis_json=diagnosis.model_dump_json(indent=2),
+        alternative_hypotheses="\n".join(
+            f"- {h}" for h in challenge.alternative_hypotheses
+        ),
+        evidence_gap_challenges="\n".join(
+            f"- {c}" for c in challenge.evidence_gap_challenges
+        ),
+        logical_weaknesses="\n".join(
+            f"- {w}" for w in challenge.logical_weaknesses
+        ),
+        overall_assessment=challenge.overall_assessment,
+    )
+
+    checkpointer = None
+    try:
+        from ..db.checkpointer import get_checkpointer
+        checkpointer = await get_checkpointer()
+    except Exception:
+        logger.debug("Could not obtain checkpointer for rebuttal subgraph")
+
+    orchestrator = build_orchestrator_agent(
+        alert_count=max(len(state.get("alerts", [])), 1),
+        checkpointer=checkpointer,
+    )
+
+    revised_diagnosis: DiagnosisObject | None = None
+    rebuttals: list[SkepticRebuttal] = []
+    summary = "Rebuttal could not be completed"
+
+    try:
+        invoke_config: dict = {}
+        if checkpointer is not None:
+            invoke_config["configurable"] = {
+                "thread_id": f"{incident_id}:rebuttal:{round_number}",
+            }
+
+        result = await orchestrator.ainvoke(
+            {"messages": [HumanMessage(content=prompt_text)]},
+            config=invoke_config,
+        )
+
+        structured_response = result.get("structured_response")
+        if structured_response:
+            if isinstance(structured_response, DiagnosisObject):
+                response_diag = structured_response
+            elif isinstance(structured_response, dict):
+                try:
+                    response_diag = DiagnosisObject.model_validate(structured_response)
+                except Exception:
+                    logger.warning(
+                        "Rebuttal structured_response dict failed validation",
+                        extra={"incident_id": incident_id},
+                    )
+                    response_diag = None
+            else:
+                response_diag = None
+
+            if response_diag is not None:
+                original_hash = diagnosis.root_cause_hash()
+                new_hash = response_diag.root_cause_hash()
+                if new_hash != original_hash:
+                    revised_diagnosis = response_diag
+
+        messages = result.get("messages", [])
+        if messages:
+            raw_content = messages[-1].content if hasattr(messages[-1], "content") else str(messages[-1])
+            if isinstance(raw_content, list):
+                summary = "\n".join(
+                    block.get("text", str(block)) if isinstance(block, dict) else str(block)
+                    for block in raw_content
+                )
+            else:
+                summary = str(raw_content)
+
+        rebuttals = _build_point_specific_rebuttals(challenge, summary)
+
+    except Exception as exc:
+        logger.warning(
+            "Orchestrator rebuttal failed",
+            extra={"incident_id": incident_id, "error": str(exc)},
+        )
+        all_challenge_points = (
+            challenge.alternative_hypotheses
+            + challenge.evidence_gap_challenges
+            + challenge.logical_weaknesses
+        )
+        for point in all_challenge_points:
+            rebuttals.append(SkepticRebuttal(
+                challenge_point=point,
+                rebuttal="Rebuttal agent invocation failed — original diagnosis stands",
+            ))
+
+    return SkepticResponse(
+        rebuttals=rebuttals,
+        revised_diagnosis=revised_diagnosis,
+        summary=summary,
+    )

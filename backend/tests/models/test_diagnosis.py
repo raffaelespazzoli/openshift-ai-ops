@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime, timezone
+from types import MappingProxyType
 
 import pytest
 
@@ -23,6 +24,18 @@ def _make_evidence() -> EvidenceArtifact:
         result='{"items": []}',
         timestamp=datetime.now(timezone.utc),
     )
+
+
+def _make_verdict_dict() -> dict:
+    """Create a minimal SkepticVerdict dict for sealing tests."""
+    return {
+        "passed": True,
+        "rounds_completed": 1,
+        "original_hash": "a" * 64,
+        "final_hash": "a" * 64,
+        "challenge_history": [{"round": 1}],
+        "verdict_reasoning": "validated",
+    }
 
 
 def _make_diagnosis(**overrides) -> DiagnosisObject:
@@ -249,7 +262,10 @@ class TestImmutableDiagnosisArtifact:
     @pytest.mark.unit
     def test_immutable_from_diagnosis(self):
         diag = _make_diagnosis()
-        frozen = ImmutableDiagnosisArtifact.from_diagnosis(diag)
+        now = datetime.now(timezone.utc)
+        frozen = ImmutableDiagnosisArtifact.from_diagnosis(
+            diag, skeptic_verdict=_make_verdict_dict(), sealed_at=now,
+        )
         assert frozen.id == diag.id
         assert frozen.root_cause_code == diag.root_cause_code
         assert frozen.confidence == diag.confidence
@@ -257,20 +273,29 @@ class TestImmutableDiagnosisArtifact:
     @pytest.mark.unit
     def test_immutable_cannot_mutate(self):
         diag = _make_diagnosis()
-        frozen = ImmutableDiagnosisArtifact.from_diagnosis(diag)
+        now = datetime.now(timezone.utc)
+        frozen = ImmutableDiagnosisArtifact.from_diagnosis(
+            diag, skeptic_verdict=_make_verdict_dict(), sealed_at=now,
+        )
         with pytest.raises(Exception):
             frozen.confidence = 0.99  # type: ignore[misc]
 
     @pytest.mark.unit
     def test_immutable_hash_matches_mutable(self):
         diag = _make_diagnosis()
-        frozen = ImmutableDiagnosisArtifact.from_diagnosis(diag)
+        now = datetime.now(timezone.utc)
+        frozen = ImmutableDiagnosisArtifact.from_diagnosis(
+            diag, skeptic_verdict=_make_verdict_dict(), sealed_at=now,
+        )
         assert frozen.root_cause_hash() == diag.root_cause_hash()
 
     @pytest.mark.unit
     def test_immutable_tuples_not_lists(self):
         diag = _make_diagnosis()
-        frozen = ImmutableDiagnosisArtifact.from_diagnosis(diag)
+        now = datetime.now(timezone.utc)
+        frozen = ImmutableDiagnosisArtifact.from_diagnosis(
+            diag, skeptic_verdict=_make_verdict_dict(), sealed_at=now,
+        )
         assert isinstance(frozen.causal_chain, tuple)
         assert isinstance(frozen.affected_resources, tuple)
         assert isinstance(frozen.evidence, tuple)
@@ -280,7 +305,10 @@ class TestImmutableDiagnosisArtifact:
     def test_nested_evidence_is_deeply_immutable(self):
         """EvidenceArtifact inside ImmutableDiagnosisArtifact cannot be mutated."""
         diag = _make_diagnosis()
-        frozen = ImmutableDiagnosisArtifact.from_diagnosis(diag)
+        now = datetime.now(timezone.utc)
+        frozen = ImmutableDiagnosisArtifact.from_diagnosis(
+            diag, skeptic_verdict=_make_verdict_dict(), sealed_at=now,
+        )
         with pytest.raises(Exception):
             frozen.evidence[0].result = "tampered"  # type: ignore[misc]
 
@@ -289,9 +317,109 @@ class TestImmutableDiagnosisArtifact:
         """EvidenceGap inside ImmutableDiagnosisArtifact cannot be mutated."""
         gap = EvidenceGap(query="test", reason="timeout", timeout_seconds=5.0)
         diag = _make_diagnosis(evidence_gaps=[gap])
-        frozen = ImmutableDiagnosisArtifact.from_diagnosis(diag)
+        now = datetime.now(timezone.utc)
+        frozen = ImmutableDiagnosisArtifact.from_diagnosis(
+            diag, skeptic_verdict=_make_verdict_dict(), sealed_at=now,
+        )
         with pytest.raises(Exception):
             frozen.evidence_gaps[0].reason = "tampered"  # type: ignore[misc]
+
+    @pytest.mark.unit
+    def test_immutable_requires_skeptic_verdict(self):
+        """ImmutableDiagnosisArtifact requires non-None skeptic_verdict."""
+        diag = _make_diagnosis()
+        with pytest.raises(Exception):
+            ImmutableDiagnosisArtifact.from_diagnosis(
+                diag, skeptic_verdict=None, sealed_at=datetime.now(timezone.utc),
+            )
+
+    @pytest.mark.unit
+    def test_immutable_requires_sealed_at(self):
+        """ImmutableDiagnosisArtifact requires non-None sealed_at."""
+        diag = _make_diagnosis()
+        with pytest.raises(Exception):
+            ImmutableDiagnosisArtifact.from_diagnosis(
+                diag, skeptic_verdict=_make_verdict_dict(), sealed_at=None,
+            )
+
+    @pytest.mark.unit
+    def test_skeptic_verdict_is_frozen(self):
+        """skeptic_verdict dict is frozen via MappingProxyType after sealing."""
+        diag = _make_diagnosis()
+        now = datetime.now(timezone.utc)
+        frozen = ImmutableDiagnosisArtifact.from_diagnosis(
+            diag, skeptic_verdict=_make_verdict_dict(), sealed_at=now,
+        )
+        assert isinstance(frozen.skeptic_verdict, MappingProxyType)
+        with pytest.raises(TypeError):
+            frozen.skeptic_verdict["passed"] = False  # type: ignore[index]
+
+    @pytest.mark.unit
+    def test_alternative_hypotheses_dicts_are_frozen(self):
+        """alternative_hypotheses dict entries are frozen via MappingProxyType."""
+        diag = _make_diagnosis()
+        diag = diag.model_copy(update={
+            "alternative_hypotheses": [{"code": "network/dns-failure", "confidence": 0.3}],
+        })
+        now = datetime.now(timezone.utc)
+        frozen = ImmutableDiagnosisArtifact.from_diagnosis(
+            diag, skeptic_verdict=_make_verdict_dict(), sealed_at=now,
+        )
+        assert isinstance(frozen.alternative_hypotheses[0], MappingProxyType)
+        with pytest.raises(TypeError):
+            frozen.alternative_hypotheses[0]["code"] = "tampered"  # type: ignore[index]
+
+
+class TestImmutableDiagnosisSealIntegration:
+    """ImmutableDiagnosisArtifact.from_diagnosis copies all fields correctly (Task 9.4)."""
+
+    @pytest.mark.unit
+    def test_seal_preserves_all_fields(self):
+        gap = EvidenceGap(query="get_logs", reason="MCP timeout", timeout_seconds=10.0)
+        diag = _make_diagnosis(evidence_gaps=[gap])
+        now = datetime.now(timezone.utc)
+        frozen = ImmutableDiagnosisArtifact.from_diagnosis(
+            diag, skeptic_verdict=_make_verdict_dict(), sealed_at=now,
+        )
+        assert frozen.id == diag.id
+        assert frozen.incident_id == diag.incident_id
+        assert frozen.root_cause_component == diag.root_cause_component
+        assert frozen.failure_mode == diag.failure_mode
+        assert frozen.root_cause_code == diag.root_cause_code
+        assert frozen.confidence == diag.confidence
+        assert frozen.agent_summary == diag.agent_summary
+        assert frozen.created_at == diag.created_at
+        assert len(frozen.causal_chain) == len(diag.causal_chain)
+        assert len(frozen.evidence) == len(diag.evidence)
+        assert len(frozen.evidence_gaps) == len(diag.evidence_gaps)
+
+    @pytest.mark.unit
+    def test_frozen_raises_on_any_field_mutation(self):
+        diag = _make_diagnosis()
+        now = datetime.now(timezone.utc)
+        frozen = ImmutableDiagnosisArtifact.from_diagnosis(
+            diag, skeptic_verdict=_make_verdict_dict(), sealed_at=now,
+        )
+        with pytest.raises(Exception):
+            frozen.root_cause_component = "tampered"  # type: ignore[misc]
+        with pytest.raises(Exception):
+            frozen.agent_summary = "tampered"  # type: ignore[misc]
+        with pytest.raises(Exception):
+            frozen.id = uuid.uuid4()  # type: ignore[misc]
+
+    @pytest.mark.unit
+    def test_model_dump_works_on_frozen(self):
+        """model_dump() still works on frozen artifacts."""
+        diag = _make_diagnosis()
+        now = datetime.now(timezone.utc)
+        frozen = ImmutableDiagnosisArtifact.from_diagnosis(
+            diag, skeptic_verdict=_make_verdict_dict(), sealed_at=now,
+        )
+        data = frozen.model_dump(mode="json")
+        assert data["root_cause_code"] == diag.root_cause_code
+        assert data["confidence"] == diag.confidence
+        assert data["skeptic_verdict"]["passed"] is True
+        assert data["sealed_at"] is not None
 
 
 class TestEvidenceArtifact:

@@ -24,6 +24,7 @@ from .diagnosis import (
     ImmutableDiagnosisArtifact,
 )
 from .events import BusEvent, EventBus, EventNames, SSEEventData
+from .skeptic import SkepticChallenge, SkepticRebuttal, SkepticResponse, SkepticVerdict
 from .incident import Incident, Severity
 from .case_record import CaseRecordSummary
 from .knowledge import CompletenessResult, RunbookChunk
@@ -70,6 +71,10 @@ __all__ = [
     "RunbookChunk",
     "SSEEventData",
     "Severity",
+    "SkepticChallenge",
+    "SkepticRebuttal",
+    "SkepticResponse",
+    "SkepticVerdict",
     "TERMINAL_STATES",
     "VALID_SUBSYSTEMS",
     "VALID_TRANSITIONS",
