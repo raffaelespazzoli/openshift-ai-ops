@@ -62,6 +62,8 @@ spec:
               value: "{{ .Values.queue.priorityWeights.warning }}"
             - name: QUEUE_PRIORITY_WEIGHT_INFO
               value: "{{ .Values.queue.priorityWeights.info }}"
+            - name: MCP_READONLY_URL
+              value: "http://{{ .Release.Name }}-mcp-readonly:{{ .Values.mcpReadonly.port }}/mcp"
             {{- if .Values.alertmanager.url }}
             - name: ALERTMANAGER_URL
               value: "{{ .Values.alertmanager.url }}"

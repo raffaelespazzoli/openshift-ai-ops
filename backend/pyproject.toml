@@ -19,6 +19,7 @@ dependencies = [
     "alembic",
     "uvicorn",
     "python-json-logger>=3.0",
+    "mcp",
 ]
 
 [project.optional-dependencies]

@@ -31,7 +31,7 @@ VALID_TRANSITIONS: dict[IncidentState, list[IncidentState]] = {
         IncidentState.DIAGNOSED,
         IncidentState.CANCELLED,
     ],
-    IncidentState.DIAGNOSING: [IncidentState.DIAGNOSED, IncidentState.FAILED],
+    IncidentState.DIAGNOSING: [IncidentState.DIAGNOSED, IncidentState.FAILED, IncidentState.QUEUED],
     IncidentState.DIAGNOSED: [IncidentState.AWAITING_APPROVAL, IncidentState.EXECUTING],
     IncidentState.AWAITING_APPROVAL: [IncidentState.EXECUTING, IncidentState.FAILED],
     IncidentState.EXECUTING: [IncidentState.OBSERVING],

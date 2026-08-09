@@ -14,6 +14,15 @@ from .api import (
     ApiMeta,
     ApiResponse,
 )
+from .diagnosis import (
+    ROOT_CAUSE_TAXONOMY,
+    VALID_SUBSYSTEMS,
+    DiagnosisObject,
+    EvidenceArtifact,
+    EvidenceGap,
+    EvidenceSource,
+    ImmutableDiagnosisArtifact,
+)
 from .events import BusEvent, EventBus, EventNames, SSEEventData
 from .incident import Incident, Severity
 from .root_cause_event import CorrelationEvidence, CorrelationLayer, RootCauseEvent
@@ -38,21 +47,28 @@ __all__ = [
     "BusEvent",
     "CorrelationEvidence",
     "CorrelationLayer",
+    "DiagnosisObject",
     "ERROR_INTERNAL",
     "ERROR_NOT_FOUND",
     "ERROR_UNAUTHORIZED",
     "ERROR_VALIDATION",
     "EventBus",
     "EventNames",
+    "EvidenceArtifact",
+    "EvidenceGap",
+    "EvidenceSource",
+    "ImmutableDiagnosisArtifact",
     "Incident",
     "IncidentState",
     "InvalidTransitionError",
-    "initial_state",
+    "ROOT_CAUSE_TAXONOMY",
     "RootCauseEvent",
     "SSEEventData",
     "Severity",
     "TERMINAL_STATES",
+    "VALID_SUBSYSTEMS",
     "VALID_TRANSITIONS",
     "WebhookAlertStatus",
+    "initial_state",
     "transition",
 ]

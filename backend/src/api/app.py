@@ -15,9 +15,10 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from ..config.logging import Component, get_logger, request_id_var, setup_logging
 from ..config.settings import get_correlation_settings
 from ..db import close_pool, get_pool
+from ..db.checkpointer import close_checkpointer, setup_checkpointer
 from ..models.api import ERROR_INTERNAL, ERROR_NOT_FOUND, ERROR_VALIDATION, ApiError
 from ..pipeline.correlator import seal_expired_groups
-from ..pipeline.dispatcher import run_dispatcher
+from ..pipeline.dispatcher import run_dispatcher, shutdown_pipeline_tasks
 from .audit import AuditMiddleware
 from .auth import AuthenticationError, handle_authentication_error
 from .event_bus import get_event_bus
@@ -60,6 +61,7 @@ async def lifespan(app: FastAPI):
     """Manage application lifecycle."""
     logger.info("Application starting", extra={"component": "api"})
     get_event_bus()
+    await setup_checkpointer()
     sealing_task = asyncio.create_task(_background_sealing_sweep())
     dispatcher_task = asyncio.create_task(run_dispatcher())
     yield
@@ -73,6 +75,8 @@ async def lifespan(app: FastAPI):
         await sealing_task
     except asyncio.CancelledError:
         pass
+    await shutdown_pipeline_tasks()
+    await close_checkpointer()
     await close_pool()
     logger.info("Application shutting down", extra={"component": "api"})
 
