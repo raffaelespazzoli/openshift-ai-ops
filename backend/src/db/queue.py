@@ -320,6 +320,28 @@ async def get_rce_incident_ids(
     return [r["incident_id"] for r in rows]
 
 
+async def get_rce_alert_data(
+    conn: asyncpg.Connection | asyncpg.Pool,
+    root_cause_event_id: uuid.UUID,
+) -> list[dict]:
+    """Get full alert data (labels, annotations, fingerprint) for an RCE.
+
+    Used by the pipeline runner to populate the diagnosis graph state
+    so the orchestrator has real alert metadata for hypothesis formation.
+    """
+    rows = await conn.fetch(
+        """
+        SELECT a.id, a.fingerprint, a.labels, a.annotations, a.status, a.fired_at
+        FROM alert_group_members agm
+        JOIN alerts a ON a.id = agm.alert_id
+        WHERE agm.group_id = $1
+        ORDER BY a.fired_at ASC
+        """,
+        root_cause_event_id,
+    )
+    return [dict(r) for r in rows]
+
+
 async def get_rce_alert_fingerprints(
     conn: asyncpg.Connection | asyncpg.Pool,
     root_cause_event_id: uuid.UUID,

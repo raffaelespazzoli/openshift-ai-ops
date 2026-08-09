@@ -56,12 +56,69 @@ async def _background_sealing_sweep() -> None:
             logger.exception("Error in background sealing sweep")
 
 
+async def _init_pgvector() -> None:
+    """Register pgvector types on the asyncpg pool (AD-13).
+
+    Must be called after pool creation so vector columns can be
+    read/written as Python lists.
+    """
+    try:
+        from pgvector.asyncpg import register_vector
+
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await register_vector(conn)
+        logger.info("pgvector types registered on asyncpg pool")
+    except ImportError:
+        logger.warning("pgvector package not installed — vector operations unavailable")
+    except Exception:
+        logger.warning("pgvector registration failed — vector operations may not work")
+
+
+async def _ingest_runbooks_on_startup() -> None:
+    """Ingest bundled runbooks into pgvector on startup (AD-13).
+
+    Runbooks are bundled at container build time. This runs once on
+    startup; refresh = image rebuild. Skips gracefully if the configured
+    runbook directory does not exist or is empty.
+    """
+    try:
+        from ..config.knowledge_settings import get_knowledge_settings
+        from ..knowledge.ingest import ingest_runbooks
+
+        settings = get_knowledge_settings()
+        logger.info(
+            "Attempting runbook ingestion",
+            extra={"runbooks_directory": settings.runbooks_directory},
+        )
+
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            from pgvector.asyncpg import register_vector
+            await register_vector(conn)
+            stats = await ingest_runbooks(conn)
+
+        if stats["files_processed"] == 0:
+            logger.info(
+                "No runbooks ingested — directory missing or empty (expected if no corpus bundled)",
+                extra={"runbooks_directory": settings.runbooks_directory},
+            )
+        else:
+            logger.info("Runbook ingestion complete on startup", extra=stats)
+    except ImportError:
+        logger.warning("Knowledge modules not available — skipping runbook ingestion")
+    except Exception:
+        logger.warning("Runbook ingestion failed on startup — RAG search may be limited")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifecycle."""
     logger.info("Application starting", extra={"component": "api"})
     get_event_bus()
     await setup_checkpointer()
+    await _init_pgvector()
+    await _ingest_runbooks_on_startup()
     sealing_task = asyncio.create_task(_background_sealing_sweep())
     dispatcher_task = asyncio.create_task(run_dispatcher())
     yield

@@ -98,6 +98,8 @@ class DiagnosisObject(BaseModel):
     evidence_gaps: list[EvidenceGap] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0)
     agent_summary: str = ""
+    coverage_gaps: list[str] = Field(default_factory=list)
+    alternative_hypotheses: list[dict] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @model_validator(mode="after")
@@ -141,6 +143,8 @@ class ImmutableDiagnosisArtifact(BaseModel):
     evidence_gaps: tuple[EvidenceGap, ...] = ()
     confidence: float = Field(ge=0.0, le=1.0)
     agent_summary: str = ""
+    coverage_gaps: tuple[str, ...] = ()
+    alternative_hypotheses: tuple[dict, ...] = ()
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     def root_cause_hash(self) -> str:
@@ -167,5 +171,7 @@ class ImmutableDiagnosisArtifact(BaseModel):
             evidence_gaps=tuple(diag.evidence_gaps),
             confidence=diag.confidence,
             agent_summary=diag.agent_summary,
+            coverage_gaps=tuple(diag.coverage_gaps),
+            alternative_hypotheses=tuple(diag.alternative_hypotheses),
             created_at=diag.created_at,
         )

@@ -33,10 +33,21 @@ def get_db_url() -> str:
     return f"postgresql://{user}:{password}@{p['host']}:{p['port']}/{p['database']}"
 
 
+def _get_pool_init_hook():
+    """Return pgvector's register_vector as pool init callback, or None."""
+    try:
+        from pgvector.asyncpg import register_vector
+        return register_vector
+    except ImportError:
+        return None
+
+
 async def get_pool() -> asyncpg.Pool:
     """Get or create the connection pool.
 
     Passes credentials as keyword arguments to avoid DSN-encoding edge cases.
+    When pgvector is installed, every pooled connection automatically has
+    vector types registered via the pool's ``init`` callback.
     """
     global _pool
     if _pool is None:
@@ -49,6 +60,7 @@ async def get_pool() -> asyncpg.Pool:
             database=p["database"],
             min_size=2,
             max_size=10,
+            init=_get_pool_init_hook(),
         )
     return _pool
 

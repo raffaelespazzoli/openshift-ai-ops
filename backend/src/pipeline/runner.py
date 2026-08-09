@@ -12,7 +12,7 @@ import uuid
 from ..config.logging import Component, get_logger
 from ..db import get_pool
 from ..db.checkpointer import get_checkpointer
-from ..db.queue import get_rce_incident_ids, mark_pipeline_complete
+from ..db.queue import get_rce_alert_data, get_rce_incident_ids, mark_pipeline_complete
 from ..models.events import EventNames, SSEEventData
 from ..models.state_machine import IncidentState, transition
 from .diagnosis_graph import DiagnosisState, build_diagnosis_graph
@@ -45,6 +45,8 @@ async def run_diagnosis_pipeline(item: dict) -> None:
         for iid in all_ids:
             await _emit_stage_event(iid, "diagnose", "diagnosing")
 
+        alerts = await _fetch_rce_alerts(item["root_cause_event_id"])
+
         checkpointer = await get_checkpointer()
         builder = build_diagnosis_graph()
         graph = builder.compile(checkpointer=checkpointer)
@@ -55,11 +57,17 @@ async def run_diagnosis_pipeline(item: dict) -> None:
                 "id": str(item["root_cause_event_id"]),
                 "priority_score": item["priority_score"],
             },
-            "alerts": [],
+            "alerts": alerts,
             "mcp_evidence": [],
             "evidence_gaps": [],
             "diagnosis": None,
             "stage": "entered",
+            "runbook_context": [],
+            "completeness_attempts": 0,
+            "coverage_gaps": [],
+            "rejected_hypotheses": [],
+            "unaddressed_alerts": [],
+            "evidence_ledger": [],
         }
 
         config = {"configurable": {"thread_id": incident_id}}
@@ -74,6 +82,23 @@ async def run_diagnosis_pipeline(item: dict) -> None:
             extra={"incident_id": incident_id},
         )
         await _handle_failure(item, all_ids)
+
+
+async def _fetch_rce_alerts(root_cause_event_id: uuid.UUID) -> list[dict]:
+    """Fetch all alert data for the RCE so the orchestrator has real metadata."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await get_rce_alert_data(conn, root_cause_event_id)
+
+    alerts = []
+    for row in rows:
+        alerts.append({
+            "fingerprint": row["fingerprint"],
+            "labels": row["labels"] if isinstance(row["labels"], dict) else {},
+            "annotations": row["annotations"] if isinstance(row["annotations"], dict) else {},
+            "status": row["status"],
+        })
+    return alerts
 
 
 async def _get_all_incident_ids(item: dict) -> list[uuid.UUID]:

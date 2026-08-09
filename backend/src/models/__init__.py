@@ -25,6 +25,7 @@ from .diagnosis import (
 )
 from .events import BusEvent, EventBus, EventNames, SSEEventData
 from .incident import Incident, Severity
+from .knowledge import CompletenessResult, RunbookChunk
 from .root_cause_event import CorrelationEvidence, CorrelationLayer, RootCauseEvent
 from .state_machine import (
     TERMINAL_STATES,
@@ -45,6 +46,7 @@ __all__ = [
     "ApiMeta",
     "ApiResponse",
     "BusEvent",
+    "CompletenessResult",
     "CorrelationEvidence",
     "CorrelationLayer",
     "DiagnosisObject",
@@ -63,6 +65,7 @@ __all__ = [
     "InvalidTransitionError",
     "ROOT_CAUSE_TAXONOMY",
     "RootCauseEvent",
+    "RunbookChunk",
     "SSEEventData",
     "Severity",
     "TERMINAL_STATES",

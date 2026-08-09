@@ -10,12 +10,19 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
+from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.models.diagnosis import EvidenceArtifact, EvidenceGap, EvidenceSource
+from src.models.diagnosis import (
+    DiagnosisObject,
+    EvidenceArtifact,
+    EvidenceGap,
+    EvidenceSource,
+)
 
 
 CANNED_RESPONSES: dict[str, Any] = {
@@ -107,4 +114,49 @@ def mock_mcp_client_error():
         "src.pipeline.mcp_client.ReadOnlyMCPClient._call_tool",
         mock_call_tool_error,
     ):
+        yield
+
+
+@pytest.fixture
+def mock_orchestrator_agent():
+    """Mock the orchestrator agent to return a valid diagnosis without real LLM calls."""
+
+    async def mock_run_orchestrator(state, config=None):
+        incident_id = state.get("incident_id", str(uuid.uuid4()))
+        alerts = state.get("alerts", [])
+        alert_names = [
+            a.get("labels", a).get("alertname", "KubePodCrashLooping")
+            for a in alerts
+        ] if alerts else ["KubePodCrashLooping"]
+        alert_summary = ", ".join(alert_names)
+        diagnosis = DiagnosisObject(
+            incident_id=uuid.UUID(incident_id),
+            root_cause_component="workload",
+            failure_mode="crash-loop-backoff",
+            root_cause_code="workload/crash-loop-backoff",
+            causal_chain=["Pod CrashLoopBackOff due to OOM"],
+            affected_resources=["pod/test-app-xyz-123"],
+            evidence=[
+                EvidenceArtifact(
+                    source=EvidenceSource.MCP_CLUSTER,
+                    query="get_resources({'kind': 'Pod'})",
+                    result='{"status": {"phase": "CrashLoopBackOff"}}',
+                    timestamp=datetime.now(timezone.utc),
+                ),
+            ],
+            confidence=0.85,
+            agent_summary=f"Pod crash-loop due to OOM kills — alerts: {alert_summary}",
+        )
+        completeness_attempts = state.get("completeness_attempts", 0)
+        return {
+            "diagnosis": diagnosis.model_dump(mode="json"),
+            "runbook_context": [],
+            "completeness_attempts": completeness_attempts + 1,
+            "coverage_gaps": [f"no specialist covers: {n} (MVP generalist mode)" for n in alert_names],
+            "rejected_hypotheses": [],
+            "evidence_ledger": [],
+            "stage": "diagnosed",
+        }
+
+    with patch("src.agents.orchestrator.run_orchestrator", side_effect=mock_run_orchestrator):
         yield

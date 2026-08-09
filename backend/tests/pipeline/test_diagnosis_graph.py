@@ -1,7 +1,7 @@
 """Pipeline integration tests for the LangGraph diagnosis graph.
 
-Tests graph compilation, execution with mocked diagnosis node,
-DiagnosisObject production, and state transitions.
+Tests graph compilation, execution with orchestrator agent (mocked LLM),
+DiagnosisObject production, completeness gate, and state transitions.
 Checkpoint tests require testcontainers (pytest -m pipeline).
 """
 
@@ -13,7 +13,9 @@ import pytest
 from src.models.diagnosis import DiagnosisObject
 from src.pipeline.diagnosis_graph import (
     DiagnosisState,
+    _completeness_routing,
     build_diagnosis_graph,
+    completeness_gate_node,
     diagnose_node,
     finalize_node,
 )
@@ -28,6 +30,12 @@ def _make_initial_state(incident_id: str | None = None) -> DiagnosisState:
         "evidence_gaps": [],
         "diagnosis": None,
         "stage": "entered",
+        "runbook_context": [],
+        "completeness_attempts": 0,
+        "coverage_gaps": [],
+        "rejected_hypotheses": [],
+        "unaddressed_alerts": [],
+        "evidence_ledger": [],
     }
 
 
@@ -46,14 +54,15 @@ class TestGraphCompilation:
         graph = builder.compile()
         node_names = set(graph.nodes.keys())
         assert "diagnose" in node_names
+        assert "completeness_gate" in node_names
         assert "finalize" in node_names
 
 
 class TestDiagnoseNode:
-    """The diagnose node produces a valid DiagnosisObject in state."""
+    """The diagnose node invokes the orchestrator and produces a DiagnosisObject."""
 
     @pytest.mark.unit
-    async def test_diagnose_produces_diagnosis(self, mock_mcp_client):
+    async def test_diagnose_produces_diagnosis(self, mock_orchestrator_agent):
         state = _make_initial_state()
         with patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock):
             result = await diagnose_node(state)
@@ -61,11 +70,10 @@ class TestDiagnoseNode:
         assert "diagnosis" in result
         assert result["diagnosis"] is not None
         diag = DiagnosisObject.model_validate(result["diagnosis"])
-        assert diag.root_cause_code == "unknown/unclassified"
-        assert diag.confidence == 0.0
+        assert diag.confidence > 0.0
 
     @pytest.mark.unit
-    async def test_diagnose_sets_stage_to_diagnosed(self, mock_mcp_client):
+    async def test_diagnose_sets_stage_to_diagnosed(self, mock_orchestrator_agent):
         state = _make_initial_state()
         with patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock):
             result = await diagnose_node(state)
@@ -73,7 +81,7 @@ class TestDiagnoseNode:
         assert result["stage"] == "diagnosed"
 
     @pytest.mark.unit
-    async def test_diagnose_preserves_incident_id(self, mock_mcp_client):
+    async def test_diagnose_preserves_incident_id(self, mock_orchestrator_agent):
         incident_id = str(uuid.uuid4())
         state = _make_initial_state(incident_id=incident_id)
         with patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock):
@@ -83,24 +91,23 @@ class TestDiagnoseNode:
         assert str(diag.incident_id) == incident_id
 
     @pytest.mark.unit
-    async def test_diagnose_populates_mcp_evidence(self, mock_mcp_client):
+    async def test_diagnose_returns_coverage_gaps(self, mock_orchestrator_agent):
         state = _make_initial_state()
         with patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock):
             result = await diagnose_node(state)
 
-        assert "mcp_evidence" in result
-        assert len(result["mcp_evidence"]) > 0
+        assert "coverage_gaps" in result
 
     @pytest.mark.unit
-    async def test_diagnose_records_evidence_gaps_on_mcp_failure(self):
-        """When MCP gathering fails entirely, pipeline still produces a diagnosis."""
+    async def test_diagnose_handles_orchestrator_failure(self):
+        """When the orchestrator fails, a fallback diagnosis is produced."""
         state = _make_initial_state()
         with (
             patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock),
             patch(
-                "src.pipeline.diagnosis_graph._gather_mcp_evidence",
+                "src.agents.orchestrator.run_orchestrator",
                 new_callable=AsyncMock,
-                side_effect=ConnectionError("MCP unreachable"),
+                side_effect=RuntimeError("Agent crashed"),
             ),
         ):
             result = await diagnose_node(state)
@@ -108,6 +115,7 @@ class TestDiagnoseNode:
         assert result["diagnosis"] is not None
         diag = DiagnosisObject.model_validate(result["diagnosis"])
         assert diag.root_cause_code == "unknown/unclassified"
+        assert diag.confidence == 0.0
 
 
 class TestFinalizeNode:
@@ -117,17 +125,96 @@ class TestFinalizeNode:
     async def test_finalize_sets_stage_to_finalized(self):
         state = _make_initial_state()
         state["stage"] = "diagnosed"
-        with patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock):
+        with (
+            patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock),
+            patch("src.api.event_bus.get_event_bus", side_effect=ImportError("no bus")),
+        ):
             result = await finalize_node(state)
 
         assert result["stage"] == "finalized"
 
 
-class TestGraphEndToEnd:
-    """Graph runs end-to-end with stub nodes, produces DiagnosisObject."""
+class TestCompletenessRouting:
+    """Tests for the graph-level completeness routing logic."""
 
     @pytest.mark.unit
-    async def test_full_graph_execution(self, mock_mcp_client):
+    def test_routes_to_finalize_when_no_unaddressed(self):
+        state = _make_initial_state()
+        state["unaddressed_alerts"] = []
+        state["completeness_attempts"] = 1
+        assert _completeness_routing(state) == "finalize"
+
+    @pytest.mark.unit
+    def test_routes_to_orchestrate_when_unaddressed_and_retries_remain(self):
+        state = _make_initial_state()
+        state["unaddressed_alerts"] = ["alert-fp-123"]
+        state["completeness_attempts"] = 1
+        assert _completeness_routing(state) == "orchestrate"
+
+    @pytest.mark.unit
+    def test_routes_to_orchestrate_on_second_retry(self):
+        state = _make_initial_state()
+        state["unaddressed_alerts"] = ["alert-fp-123"]
+        state["completeness_attempts"] = 2
+        assert _completeness_routing(state) == "orchestrate"
+
+    @pytest.mark.unit
+    def test_routes_to_finalize_when_max_retries_exhausted(self):
+        state = _make_initial_state()
+        state["unaddressed_alerts"] = ["alert-fp-123"]
+        state["completeness_attempts"] = 3
+        assert _completeness_routing(state) == "finalize"
+
+
+class TestCompletenessGateNode:
+    """Tests for the completeness_gate_node function."""
+
+    @pytest.mark.unit
+    async def test_gate_passes_with_no_alerts(self, mock_orchestrator_agent):
+        state = _make_initial_state()
+        state["diagnosis"] = {
+            "incident_id": state["incident_id"],
+            "root_cause_component": "workload",
+            "failure_mode": "crash-loop-backoff",
+            "root_cause_code": "workload/crash-loop-backoff",
+            "causal_chain": ["Test"],
+            "affected_resources": [],
+            "evidence": [],
+            "evidence_gaps": [],
+            "confidence": 0.8,
+            "agent_summary": "Test diagnosis",
+        }
+        result = await completeness_gate_node(state)
+        assert result["unaddressed_alerts"] == []
+
+    @pytest.mark.unit
+    async def test_gate_returns_unaddressed_when_incomplete(self):
+        state = _make_initial_state()
+        state["alerts"] = [
+            {"fingerprint": "fp-missing", "labels": {"alertname": "MissingAlert"}},
+        ]
+        state["completeness_attempts"] = 1
+        state["diagnosis"] = {
+            "incident_id": state["incident_id"],
+            "root_cause_component": "workload",
+            "failure_mode": "crash-loop-backoff",
+            "root_cause_code": "workload/crash-loop-backoff",
+            "causal_chain": ["Different issue"],
+            "affected_resources": [],
+            "evidence": [],
+            "evidence_gaps": [],
+            "confidence": 0.5,
+            "agent_summary": "Diagnosis about something else",
+        }
+        result = await completeness_gate_node(state)
+        assert len(result["unaddressed_alerts"]) > 0
+
+
+class TestGraphEndToEnd:
+    """Graph runs end-to-end with mocked orchestrator, produces DiagnosisObject."""
+
+    @pytest.mark.unit
+    async def test_full_graph_execution(self, mock_orchestrator_agent):
         builder = build_diagnosis_graph()
         graph = builder.compile()
         initial = _make_initial_state()
@@ -138,10 +225,24 @@ class TestGraphEndToEnd:
         assert final["stage"] == "finalized"
         assert final["diagnosis"] is not None
         diag = DiagnosisObject.model_validate(final["diagnosis"])
-        assert diag.root_cause_code == "unknown/unclassified"
+        assert diag.confidence > 0.0
 
     @pytest.mark.unit
-    async def test_graph_produces_valid_evidence(self, mock_mcp_client):
+    async def test_graph_state_transitions(self, mock_orchestrator_agent):
+        """Verify state transitions: entered → diagnosed → finalized."""
+        builder = build_diagnosis_graph()
+        graph = builder.compile()
+        initial = _make_initial_state()
+        initial["stage"] = "entered"
+
+        with patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock):
+            final = await graph.ainvoke(initial)
+
+        assert final["stage"] == "finalized"
+
+    @pytest.mark.unit
+    async def test_graph_completeness_attempts_tracked(self, mock_orchestrator_agent):
+        """Graph execution tracks completeness attempts."""
         builder = build_diagnosis_graph()
         graph = builder.compile()
         initial = _make_initial_state()
@@ -149,21 +250,16 @@ class TestGraphEndToEnd:
         with patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock):
             final = await graph.ainvoke(initial)
 
-        diag = DiagnosisObject.model_validate(final["diagnosis"])
-        assert len(diag.evidence) >= 1
-        assert diag.evidence[0].source == "mcp_cluster"
+        assert "completeness_attempts" in final
+        assert final["completeness_attempts"] >= 1
 
 
 class TestGraphCheckpoint:
     """Checkpoint tests — require testcontainers PostgreSQL (pytest -m pipeline)."""
 
     @pytest.mark.pipeline
-    async def test_checkpoint_persisted(self, db_url):
-        """Verify checkpoints are persisted to PostgreSQL.
-
-        Connects to the test database, runs the graph with checkpointing,
-        and verifies langgraph_* tables exist with rows (AD-3 black box).
-        """
+    async def test_checkpoint_persisted(self, db_url, mock_orchestrator_agent):
+        """Verify checkpoints are persisted to PostgreSQL."""
         from psycopg.rows import dict_row
         from psycopg_pool import AsyncConnectionPool
 
@@ -204,16 +300,8 @@ class TestGraphCheckpoint:
             await pool.close()
 
     @pytest.mark.pipeline
-    async def test_checkpoint_resume_after_interruption(self, db_url):
-        """Verify graph resumes from the last checkpoint after mid-run failure.
-
-        Uses a custom graph where the finalize node raises on the first
-        invocation (after diagnose has completed and been checkpointed),
-        simulating a pod crash between stages. On re-invocation with the
-        same thread_id, the graph must resume at finalize — the diagnose
-        node must NOT be re-run (call count stays at 1), proving that
-        checkpoint resume skips already-completed stages.
-        """
+    async def test_checkpoint_resume_after_interruption(self, db_url, mock_orchestrator_agent):
+        """Verify graph resumes from the last checkpoint after mid-run failure."""
         from langgraph.graph import END, StateGraph
         from psycopg.rows import dict_row
         from psycopg_pool import AsyncConnectionPool
@@ -260,20 +348,15 @@ class TestGraphCheckpoint:
                 with pytest.raises(RuntimeError, match="Simulated pod crash"):
                     await graph.ainvoke(initial, config=config)
 
-            assert call_tracker["diagnose"] == 1, "diagnose should have completed once"
-            assert call_tracker["finalize"] == 1, "finalize should have been entered once before crash"
+            assert call_tracker["diagnose"] == 1
+            assert call_tracker["finalize"] == 1
 
             with patch("src.pipeline.diagnosis_graph.pipeline_audit_log", new_callable=AsyncMock):
                 result = await graph.ainvoke(initial, config=config)
 
             assert result["stage"] == "finalized"
-            assert call_tracker["diagnose"] == 1, (
-                "diagnose must NOT re-run — checkpoint should resume at finalize"
-            )
-            assert call_tracker["finalize"] == 2, "finalize should succeed on second attempt"
-
-            diag = DiagnosisObject.model_validate(result["diagnosis"])
-            assert diag.root_cause_code == "unknown/unclassified"
+            assert call_tracker["diagnose"] == 1
+            assert call_tracker["finalize"] == 2
 
         finally:
             await pool.close()

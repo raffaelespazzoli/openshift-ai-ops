@@ -1,14 +1,13 @@
 """LangGraph StateGraph definition for the diagnosis pipeline (AD-1).
 
-Stages are graph nodes. The 'diagnose' node is a STUB in Story 2.1 —
-Story 2.2 replaces it with the full Orchestrator agent. Conditional
-edges for skeptic and remediation are stubs for later stories.
+Stages are graph nodes. The 'diagnose' node invokes the Orchestrator agent
+(Story 2.2). A completeness gate conditional edge retries diagnosis up to
+2 times if not all alerts are addressed. Conditional edges for skeptic and
+remediation are stubs for later stories.
 """
 
 from __future__ import annotations
 
-import uuid
-from datetime import datetime, timezone
 from typing import TypedDict
 
 from langgraph.graph import END, StateGraph
@@ -25,6 +24,9 @@ from .audit_hook import pipeline_audit_log
 logger = get_logger(Component.PIPELINE)
 
 
+MAX_COMPLETENESS_RETRIES = 2
+
+
 class DiagnosisState(TypedDict):
     """Typed state schema for the LangGraph diagnosis pipeline."""
 
@@ -35,54 +37,23 @@ class DiagnosisState(TypedDict):
     evidence_gaps: list[dict]
     diagnosis: dict | None
     stage: str
-
-
-async def _gather_mcp_evidence(
-    incident_id: str,
-) -> tuple[list[EvidenceArtifact], list[EvidenceGap]]:
-    """Query cluster state via the read-only MCP client (AD-2, AD-15).
-
-    Produces evidence artifacts on success and evidence gaps on timeout
-    or connection failure. Timeouts never fail the pipeline.
-    """
-    from .mcp_client import ReadOnlyMCPClient
-
-    client = ReadOnlyMCPClient()
-    evidence: list[EvidenceArtifact] = []
-    gaps: list[EvidenceGap] = []
-
-    queries = [
-        ("get_resources", {"kind": "Pod", "namespace": "default"}),
-        ("get_events", {}),
-    ]
-
-    for tool_name, arguments in queries:
-        result = await client.query(tool_name, arguments)
-        if isinstance(result, EvidenceArtifact):
-            evidence.append(result)
-        else:
-            gaps.append(result)
-            logger.info(
-                "MCP evidence gap recorded",
-                extra={
-                    "incident_id": incident_id,
-                    "query": result.query,
-                    "reason": result.reason,
-                },
-            )
-
-    return evidence, gaps
+    # Fields added in Story 2.2:
+    runbook_context: list[dict]
+    completeness_attempts: int
+    coverage_gaps: list[str]
+    rejected_hypotheses: list[dict]
+    unaddressed_alerts: list[str]
+    evidence_ledger: list[dict]
 
 
 async def diagnose_node(state: DiagnosisState) -> dict:
-    """Diagnosis stage node — STUB for Story 2.1.
+    """Diagnosis stage node — invokes the Orchestrator agent (Story 2.2).
 
-    Queries the cluster via MCP for evidence (AC #4, #7), then produces a
-    placeholder DiagnosisObject. Story 2.2 replaces the diagnosis logic
-    with the full Orchestrator agent.
+    Delegates to the orchestrator agent which uses tools to gather evidence,
+    searches runbooks, and produces a structured DiagnosisObject.
     """
     incident_id = state["incident_id"]
-    logger.info("Diagnosis node started (stub)", extra={"incident_id": incident_id})
+    logger.info("Diagnosis node started", extra={"incident_id": incident_id})
 
     await pipeline_audit_log(
         incident_id=incident_id,
@@ -91,71 +62,170 @@ async def diagnose_node(state: DiagnosisState) -> dict:
         state_after="diagnosing",
     )
 
-    mcp_evidence: list[EvidenceArtifact] = []
-    evidence_gaps: list[EvidenceGap] = []
     try:
-        mcp_evidence, evidence_gaps = await _gather_mcp_evidence(incident_id)
+        from ..agents.orchestrator import run_orchestrator
+
+        result = await run_orchestrator(state)
+        return result
     except Exception:
-        logger.warning(
-            "MCP evidence gathering failed, continuing with partial evidence",
+        logger.exception(
+            "Orchestrator agent failed, producing fallback diagnosis",
             extra={"incident_id": incident_id},
         )
+        from ..agents.orchestrator import _build_fallback_diagnosis
 
-    all_evidence = mcp_evidence or [
-        EvidenceArtifact(
-            source=EvidenceSource.MCP_CLUSTER,
-            query="stub_query",
-            result="stub — Story 2.2 implements real diagnosis",
-            timestamp=datetime.now(timezone.utc),
-        ),
-    ]
+        fallback = _build_fallback_diagnosis(incident_id, [])
+        return {
+            "diagnosis": fallback.model_dump(mode="json"),
+            "runbook_context": [],
+            "completeness_attempts": state.get("completeness_attempts", 0) + 1,
+            "coverage_gaps": [],
+            "rejected_hypotheses": [],
+            "stage": "diagnosed",
+        }
 
-    placeholder = DiagnosisObject(
-        incident_id=uuid.UUID(incident_id),
-        root_cause_component="unknown",
-        failure_mode="unclassified",
-        root_cause_code="unknown/unclassified",
-        causal_chain=["placeholder — pending orchestrator implementation"],
-        affected_resources=[],
-        evidence=all_evidence,
-        evidence_gaps=evidence_gaps,
-        confidence=0.0,
-        agent_summary="Stub diagnosis — pipeline infrastructure validated",
+
+async def completeness_gate_node(state: DiagnosisState) -> dict:
+    """Evaluate diagnosis completeness and store result in state (AC #6).
+
+    This node runs after the diagnose node. It checks whether the
+    diagnosis addresses all alerts and stores the result so the
+    routing function can decide finalize vs. retry.
+    """
+    from ..agents.completeness_gate import evaluate_completeness
+
+    diagnosis_dict = state.get("diagnosis")
+    alerts = state.get("alerts", [])
+    attempts = state.get("completeness_attempts", 0)
+
+    if diagnosis_dict is None:
+        return {"unaddressed_alerts": []}
+
+    try:
+        diagnosis = DiagnosisObject.model_validate(diagnosis_dict)
+    except Exception:
+        logger.warning(
+            "Could not validate diagnosis for completeness check",
+            extra={"incident_id": state["incident_id"]},
+        )
+        return {"unaddressed_alerts": []}
+
+    evidence_ledger = state.get("evidence_ledger", [])
+    result = evaluate_completeness(diagnosis, alerts, evidence_ledger=evidence_ledger)
+
+    if result.complete:
+        logger.info(
+            "Completeness gate passed",
+            extra={"incident_id": state["incident_id"], "attempts": attempts},
+        )
+        return {"unaddressed_alerts": []}
+
+    if attempts > MAX_COMPLETENESS_RETRIES:
+        gap = EvidenceGap(
+            query="completeness_check",
+            reason=(
+                f"Completeness gate failed after {MAX_COMPLETENESS_RETRIES} retries. "
+                f"Unaddressed alerts: {result.unaddressed_alerts}"
+            ),
+        )
+        gaps = list(diagnosis.evidence_gaps) + [gap]
+        updated_diag = diagnosis.model_copy(update={"evidence_gaps": gaps})
+        logger.warning(
+            "Completeness gate exhausted retries — passing with evidence gap",
+            extra={
+                "incident_id": state["incident_id"],
+                "unaddressed": result.unaddressed_alerts,
+            },
+        )
+        return {
+            "diagnosis": updated_diag.model_dump(mode="json"),
+            "unaddressed_alerts": [],
+        }
+
+    logger.info(
+        "Completeness gate failed — routing back to diagnose",
+        extra={
+            "incident_id": state["incident_id"],
+            "attempt": attempts,
+            "unaddressed": result.unaddressed_alerts,
+        },
     )
+    return {"unaddressed_alerts": result.unaddressed_alerts}
 
-    return {
-        "diagnosis": placeholder.model_dump(mode="json"),
-        "mcp_evidence": [e.model_dump(mode="json") for e in mcp_evidence],
-        "evidence_gaps": [g.model_dump(mode="json") for g in evidence_gaps],
-        "stage": "diagnosed",
-    }
+
+def _completeness_routing(state: DiagnosisState) -> str:
+    """Conditional edge: route based on completeness gate result.
+
+    Returns "finalize" when the diagnosis is complete or retries are
+    exhausted. Returns "orchestrate" to re-diagnose when unaddressed
+    alerts remain and retries are available.
+    """
+    unaddressed = state.get("unaddressed_alerts", [])
+    attempts = state.get("completeness_attempts", 0)
+
+    if not unaddressed or attempts > MAX_COMPLETENESS_RETRIES:
+        return "finalize"
+    return "orchestrate"
 
 
 async def finalize_node(state: DiagnosisState) -> dict:
     """Finalize stage — transitions state, emits events.
 
     The runner handles actual DB updates and SSE emission after
-    graph completion. This node logs the transition.
+    graph completion. This node logs the transition and emits
+    SSE progress events.
     """
     incident_id = state["incident_id"]
     logger.info("Finalize node reached", extra={"incident_id": incident_id})
+
+    audit_detail: dict = {
+        "state_before": state.get("stage", "diagnosing"),
+        "state_after": "finalized",
+    }
+    rejected = state.get("rejected_hypotheses", [])
+    if rejected:
+        audit_detail["alternative_hypotheses"] = rejected
+    coverage = state.get("coverage_gaps", [])
+    if coverage:
+        audit_detail["coverage_gaps"] = coverage
 
     await pipeline_audit_log(
         incident_id=incident_id,
         stage_name="finalize",
         state_before=state.get("stage", "diagnosing"),
         state_after="finalized",
+        extra_detail=audit_detail,
     )
+
+    # NOTE: The `diagnosed` SSE event is intentionally NOT emitted here.
+    # Terminal state events must only be emitted by the runner AFTER the
+    # pipeline completion transaction commits successfully. Emitting here
+    # would leak a premature success event if the transaction later fails.
 
     return {"stage": "finalized"}
 
 
 def build_diagnosis_graph() -> StateGraph:
-    """Build the LangGraph StateGraph for diagnosis (not yet compiled)."""
+    """Build the LangGraph StateGraph for diagnosis (not yet compiled).
+
+    Graph structure:
+      diagnose → completeness_gate → (routing) → finalize | diagnose
+      finalize → END
+
+    The completeness gate evaluates whether all alerts are addressed.
+    If not, it routes back to diagnose (max 2 retries). This makes
+    retries checkpointable at the graph level (Tasks 6.3, 7.2).
+    """
     builder = StateGraph(DiagnosisState)
     builder.add_node("diagnose", diagnose_node)
+    builder.add_node("completeness_gate", completeness_gate_node)
     builder.add_node("finalize", finalize_node)
-    builder.add_edge("diagnose", "finalize")
+    builder.add_edge("diagnose", "completeness_gate")
+    builder.add_conditional_edges(
+        "completeness_gate",
+        _completeness_routing,
+        {"finalize": "finalize", "orchestrate": "diagnose"},
+    )
     builder.add_edge("finalize", END)
     builder.set_entry_point("diagnose")
     return builder

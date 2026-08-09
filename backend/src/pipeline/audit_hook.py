@@ -22,6 +22,7 @@ async def pipeline_audit_log(
     stage_name: str,
     state_before: str,
     state_after: str,
+    extra_detail: dict | None = None,
 ) -> None:
     """Write a pipeline stage transition to the audit log (fire-and-forget).
 
@@ -30,22 +31,27 @@ async def pipeline_audit_log(
         stage_name: The graph node name (e.g. 'diagnose', 'finalize').
         state_before: Pipeline state before this node ran.
         state_after: Pipeline state after this node ran.
+        extra_detail: Optional additional fields to include in the audit record
+            (e.g. alternative_hypotheses, coverage_gaps).
     """
     try:
         pool = await get_pool()
         async with pool.acquire() as conn:
+            detail = {
+                "incident_id": incident_id,
+                "stage": stage_name,
+                "state_before": state_before,
+                "state_after": state_after,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            if extra_detail:
+                detail.update(extra_detail)
             await write_audit_log(
                 conn,
                 actor="pipeline",
                 action=f"pipeline.stage.{stage_name}",
                 target_resource=f"incident/{incident_id}",
-                detail={
-                    "incident_id": incident_id,
-                    "stage": stage_name,
-                    "state_before": state_before,
-                    "state_after": state_after,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
+                detail=detail,
             )
     except Exception:
         logger.exception(
