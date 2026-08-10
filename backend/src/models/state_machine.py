@@ -15,6 +15,7 @@ class IncidentState(StrEnum):
     QUEUED = "queued"
     DIAGNOSING = "diagnosing"
     DIAGNOSED = "diagnosed"
+    PLANNING = "planning"
     AWAITING_APPROVAL = "awaiting_approval"
     EXECUTING = "executing"
     OBSERVING = "observing"
@@ -32,7 +33,12 @@ VALID_TRANSITIONS: dict[IncidentState, list[IncidentState]] = {
         IncidentState.CANCELLED,
     ],
     IncidentState.DIAGNOSING: [IncidentState.DIAGNOSED, IncidentState.FAILED, IncidentState.QUEUED],
-    IncidentState.DIAGNOSED: [IncidentState.AWAITING_APPROVAL, IncidentState.EXECUTING],
+    IncidentState.DIAGNOSED: [
+        IncidentState.PLANNING,
+        IncidentState.AWAITING_APPROVAL,
+        IncidentState.EXECUTING,
+    ],
+    IncidentState.PLANNING: [IncidentState.AWAITING_APPROVAL, IncidentState.FAILED],
     IncidentState.AWAITING_APPROVAL: [IncidentState.EXECUTING, IncidentState.FAILED],
     IncidentState.EXECUTING: [IncidentState.OBSERVING],
     IncidentState.OBSERVING: [IncidentState.RESOLVED, IncidentState.FAILED],

@@ -25,7 +25,6 @@ logger = get_logger(Component.PIPELINE)
 
 _inflight_tasks: set[asyncio.Task] = set()
 _inflight_items: dict[asyncio.Task, dict] = {}
-_inflight_remediations: set[str] = set()
 
 MAX_TRANSITION_RETRIES = 3
 _transition_retry_counts: dict[str, int] = {}
@@ -249,9 +248,11 @@ async def dispatch_remediation(conn: asyncpg.Connection | asyncpg.Pool) -> None:
     """Dispatch remediation planning for diagnosed incidents missing a plan.
 
     Queries for incidents in 'diagnosed' state that have an immutable_diagnoses
-    row but no remediation_plans row, then spawns the remediation pipeline for each.
-    Uses _inflight_remediations as a claim set to prevent duplicate planners
-    for the same incident across successive poll cycles.
+    row but no remediation_plans row, then atomically transitions each to
+    'planning' via the state machine before spawning the remediation pipeline.
+    The state transition acts as a durable claim — other replicas (or future
+    poll cycles after a restart) will not see incidents in 'diagnosed' state
+    once they have been claimed.
     """
     rows = await conn.fetch(
         """
@@ -268,31 +269,56 @@ async def dispatch_remediation(conn: asyncpg.Connection | asyncpg.Pool) -> None:
 
     for row in rows:
         incident_id = row["incident_id"]
-        claim_key = str(incident_id)
-        if claim_key in _inflight_remediations:
-            logger.debug(
-                "Remediation already in-flight, skipping",
-                extra={"incident_id": claim_key},
-            )
+        claimed = await _claim_for_planning(conn, incident_id)
+        if not claimed:
             continue
-        _inflight_remediations.add(claim_key)
         logger.info(
             "Dispatching remediation for diagnosed incident",
-            extra={"incident_id": claim_key},
+            extra={"incident_id": str(incident_id)},
         )
         task = asyncio.create_task(_run_remediation_task(incident_id))
-        task._remediation_incident_id = incident_id  # type: ignore[attr-defined]
         _inflight_tasks.add(task)
         task.add_done_callback(_remediation_task_done)
 
 
+async def _claim_for_planning(
+    conn: asyncpg.Connection | asyncpg.Pool,
+    incident_id,
+) -> bool:
+    """Atomically transition diagnosed → planning as a durable claim.
+
+    Returns True if the claim succeeded; False if the incident was already
+    claimed (by this or another replica) or the transition is invalid.
+    """
+    try:
+        current_state_val = await conn.fetchval(
+            "SELECT state FROM incidents WHERE id = $1", incident_id
+        )
+        if current_state_val is None:
+            return False
+        current = IncidentState(current_state_val)
+        new_state = transition(current, IncidentState.PLANNING)
+        result = await conn.execute(
+            "UPDATE incidents SET state = $2, updated_at = NOW() "
+            "WHERE id = $1 AND state = $3",
+            incident_id,
+            new_state.value,
+            current_state_val,
+        )
+        # result is e.g. "UPDATE 1" or "UPDATE 0"
+        return result == "UPDATE 1"
+    except Exception:
+        logger.debug(
+            "Could not claim incident for planning",
+            extra={"incident_id": str(incident_id)},
+        )
+        return False
+
+
 def _remediation_task_done(task: asyncio.Task) -> None:
-    """Cleanup callback for remediation tasks — releases the in-flight claim."""
+    """Cleanup callback for remediation tasks."""
     _inflight_tasks.discard(task)
     _inflight_items.pop(task, None)
-    incident_id = getattr(task, "_remediation_incident_id", None)
-    if incident_id is not None:
-        _inflight_remediations.discard(str(incident_id))
 
 
 async def _run_remediation_task(incident_id) -> None:

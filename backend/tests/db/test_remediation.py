@@ -71,12 +71,23 @@ async def _insert_incident(conn, incident_id: uuid.UUID) -> None:
 
 
 async def _insert_immutable_diagnosis(
-    conn, incident_id: uuid.UUID, diagnosis_id: uuid.UUID | None = None
+    conn,
+    incident_id: uuid.UUID,
+    row_id: uuid.UUID | None = None,
+    jsonb_id: uuid.UUID | None = None,
 ) -> uuid.UUID:
-    """Insert an immutable_diagnoses row for load_immutable_artifact tests."""
-    did = diagnosis_id or uuid.uuid4()
+    """Insert an immutable_diagnoses row for load_immutable_artifact tests.
+
+    Args:
+        row_id: PK for the immutable_diagnoses row (the FK target).
+        jsonb_id: ``id`` embedded inside the JSONB ``diagnosis`` column.
+                  Deliberately defaults to a *different* UUID so tests
+                  prove the loader returns the row PK, not the JSONB id.
+    """
+    did = row_id or uuid.uuid4()
+    embedded_id = jsonb_id or uuid.uuid4()
     diagnosis = {
-        "id": str(did),
+        "id": str(embedded_id),
         "incident_id": str(incident_id),
         "root_cause_component": "workload",
         "failure_mode": "crash-loop-backoff",
@@ -179,14 +190,22 @@ class TestLoadImmutableArtifact:
     @pytest.mark.db
     async def test_load_artifact_success(self, db_conn):
         incident_id = uuid.uuid4()
+        row_id = uuid.uuid4()
+        jsonb_id = uuid.uuid4()
         await _insert_incident(db_conn, incident_id)
-        await _insert_immutable_diagnosis(db_conn, incident_id)
+        await _insert_immutable_diagnosis(
+            db_conn, incident_id, row_id=row_id, jsonb_id=jsonb_id
+        )
 
         artifact = await load_immutable_artifact(db_conn, incident_id)
 
         assert artifact.incident_id == incident_id
         assert artifact.root_cause_code == "workload/crash-loop-backoff"
         assert artifact.confidence == 0.85
+        assert artifact.id == row_id, (
+            "artifact.id must be the row PK, not the JSONB-embedded id"
+        )
+        assert artifact.id != jsonb_id
 
     @pytest.mark.db
     async def test_load_artifact_not_found_raises(self, db_conn):
@@ -204,3 +223,24 @@ class TestLoadImmutableArtifact:
 
         with pytest.raises(Exception):
             artifact.root_cause_code = "node/memory-pressure"
+
+    @pytest.mark.db
+    async def test_artifact_id_satisfies_fk(self, db_conn):
+        """artifact.id (the row PK) can be used as diagnosis_id in remediation_plans."""
+        incident_id = uuid.uuid4()
+        row_id = uuid.uuid4()
+        jsonb_id = uuid.uuid4()
+        await _insert_incident(db_conn, incident_id)
+        await _insert_immutable_diagnosis(
+            db_conn, incident_id, row_id=row_id, jsonb_id=jsonb_id
+        )
+
+        artifact = await load_immutable_artifact(db_conn, incident_id)
+        plan = _make_plan(incident_id=incident_id, diagnosis_id=artifact.id)
+        result_id = await persist_remediation_plan(db_conn, plan)
+
+        assert result_id == plan.id
+        row = await db_conn.fetchrow(
+            "SELECT diagnosis_id FROM remediation_plans WHERE id = $1", plan.id
+        )
+        assert row["diagnosis_id"] == row_id

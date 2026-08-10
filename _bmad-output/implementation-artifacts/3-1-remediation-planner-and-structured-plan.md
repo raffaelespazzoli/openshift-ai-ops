@@ -84,12 +84,14 @@ so that I can review concrete steps, understand the blast radius, and have a rol
 
 ### Review Findings
 
-- [ ] [Review][Patch] Wire `MCP_READWRITE_URL` into the backend deployment so the planner reaches the Helm-created read-write service [`charts/openshift-ai-ops/templates/deployment-backend.yaml:93`]
-- [ ] [Review][Patch] Prevent duplicate remediation dispatches for the same `diagnosed` incident; the current loop can enqueue concurrent planners and bypass the queue parallelism guard [`backend/src/pipeline/dispatcher.py:247`]
-- [ ] [Review][Patch] Compile the remediation graph with the shared checkpointer and invoke it with a stable `thread_id` so remediation state is resumable like diagnosis state [`backend/src/pipeline/remediation_runner.py:49`]
-- [ ] [Review][Patch] Treat RBAC probe failures as unknown or unsatisfied instead of implicitly allowed when `check_rbac_permissions()` cannot validate access [`backend/src/agents/planner.py:110`]
-- [ ] [Review][Patch] Enforce the story's `diagnosis_id` foreign-key requirement in migration `008_add_remediation_plans.py` [`backend/alembic/versions/008_add_remediation_plans.py:24`]
-- [ ] [Review][Patch] Constrain `Precondition.type` to the allowed `rbac|quota|resource` values and add negative tests for invalid inputs [`backend/src/models/remediation.py:43`]
+- [x] [Review][Patch] Wire `MCP_READWRITE_URL` into the backend deployment so the planner reaches the Helm-created read-write service [`charts/openshift-ai-ops/templates/deployment-backend.yaml:93`] — **Fixed**: backend Helm wiring now injects `MCP_READWRITE_URL` using the release-scoped `mcp-readwrite` service.
+- [ ] [Review][Patch] Prevent duplicate remediation dispatches for the same `diagnosed` incident; the current loop can enqueue concurrent planners and bypass the queue parallelism guard [`backend/src/pipeline/dispatcher.py:247`] — **Partial**: a process-local `_inflight_remediations` set now prevents duplicate dispatches inside one backend process, but there is still no DB-backed claim or failure marker, so multiple backend replicas can plan the same incident concurrently and failed runs are reselected on the next poll.
+- [x] [Review][Patch] Compile the remediation graph with the shared checkpointer and invoke it with a stable `thread_id` so remediation state is resumable like diagnosis state [`backend/src/pipeline/remediation_runner.py:49`] — **Fixed**: the remediation runner now compiles with the shared checkpointer and invokes the graph with a stable per-incident `thread_id`.
+- [x] [Review][Patch] Treat RBAC probe failures as unknown or unsatisfied instead of implicitly allowed when `check_rbac_permissions()` cannot validate access [`backend/src/agents/planner.py:110`] — **Fixed**: the error path now returns `allowed=False` together with `probe_failed=True` instead of implicitly allowing the precondition.
+- [ ] [Review][Patch] Enforce the story's `diagnosis_id` foreign-key requirement in migration `008_add_remediation_plans.py` [`backend/alembic/versions/008_add_remediation_plans.py:24`] — **Partial**: migration `008` now adds a foreign key to `immutable_diagnoses(id)`, but remediation planning still populates `plan.diagnosis_id` from the embedded diagnosis payload UUID (`artifact.id`), so real inserts can violate the new foreign key.
+- [x] [Review][Patch] Constrain `Precondition.type` to the allowed `rbac|quota|resource` values and add negative tests for invalid inputs [`backend/src/models/remediation.py:43`] — **Fixed**: `Precondition.type` is now constrained with a literal type and the model tests cover invalid values.
+- [ ] [Review][Decision] Align `diagnosis_id` semantics — The story now requires a foreign key, but the implementation still uses the embedded diagnosis object's UUID in some paths and the immutable artifact row UUID in others. Decide which identifier `remediation_plans.diagnosis_id` is meant to reference before changing the code.
+- [ ] [Review][Patch] Make remediation dispatch durable across processes [`backend/src/pipeline/dispatcher.py:248`] — `dispatch_remediation()` only coordinates with the process-local `_inflight_remediations` set. That still allows duplicate planners across backend replicas and causes failed remediation attempts to be immediately redispatched on the next poll because no database claim or failure state is recorded.
 
 ## Dev Notes
 
@@ -581,3 +583,11 @@ Followed story task sequence exactly: models → MCP client → planner agent �
 - [ ] [Review][Patch] RBAC probe failures are treated as allowed [`backend/src/agents/planner.py:110`] — When `check_rbac_permissions()` hits any MCP error it returns `assumed_allowed: True`, which can cause the planner to present RBAC preconditions as satisfied even though the permission check never succeeded.
 - [ ] [Review][Patch] `diagnosis_id` foreign key is missing from the remediation plan table [`backend/alembic/versions/008_add_remediation_plans.py:24`] — Story 3.1 requires `diagnosis_id UUID FK`, but migration `008` defines the column as a bare `UUID NOT NULL`, so the database will accept remediation plans that do not reference a real immutable diagnosis row.
 - [ ] [Review][Patch] `Precondition.type` is not schema-constrained [`backend/src/models/remediation.py:43`] — The contract narrows this field to `rbac`, `quota`, or `resource`, but the model accepts any string and the tests only cover valid examples. Invalid categories can therefore be generated by the planner and persisted without validation.
+
+### Review Round 2 — 2026-08-10
+**Review model:** GPT-5.4
+**Fix model:** Not applied (review only)
+
+#### Findings
+- [ ] [Review][Decision] Align `diagnosis_id` semantics — The story now requires a foreign key, but the implementation still sets `plan.diagnosis_id` from the embedded diagnosis payload (`artifact.id`) while migration `008` points the foreign key at `immutable_diagnoses.id`. Those are different UUID domains today, so real `remediation_plans` inserts will fail unless the project chooses one identifier model and applies it consistently.
+- [ ] [Review][Patch] Make remediation dispatch durable [`backend/src/pipeline/dispatcher.py:248`] — The new `_inflight_remediations` guard is process-local only. Duplicate planners are still possible across backend replicas, and any remediation run that fails before persistence is immediately redispatched on the next poll because no DB-backed claim or failure marker is recorded.
