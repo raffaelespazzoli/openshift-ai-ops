@@ -103,6 +103,8 @@ _ACTIVE_STATES = (
     "queued",
     "diagnosing",
     "diagnosed",
+    "planning",
+    "awaiting_approval",
     "executing",
     "observing",
 )

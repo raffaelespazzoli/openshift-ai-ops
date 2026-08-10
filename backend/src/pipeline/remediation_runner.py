@@ -4,8 +4,10 @@ Bridges the dispatcher to the remediation LangGraph graph.
 Loads the sealed ImmutableDiagnosisArtifact from the database,
 invokes the remediation graph, and persists the resulting plan.
 
-Does NOT transition incident state — that is Story 3.3's
-policy gate responsibility.
+On failure the runner transitions the incident to ``failed`` so it
+does not get stranded in ``planning``.  The success-path exit
+(``planning → awaiting_approval`` or ``planning → executing``) is
+handled by Story 3.3's policy gate.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from ..db.checkpointer import get_checkpointer
 from ..db.remediation import load_immutable_artifact, persist_remediation_plan
 from ..models.events import EventNames, SSEEventData
 from ..models.remediation import RemediationPlan
+from ..models.state_machine import IncidentState, transition
 from .remediation_graph import RemediationState, build_remediation_graph
 
 logger = get_logger(Component.PIPELINE)
@@ -68,6 +71,7 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
                 "Remediation graph produced no plan",
                 extra={"incident_id": str(incident_id)},
             )
+            await _transition_to_failed(incident_id)
             await _emit_remediation_event(incident_id, "remediation_plan", "failed")
             return None
 
@@ -94,8 +98,37 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
             "Remediation pipeline failed",
             extra={"incident_id": str(incident_id)},
         )
+        await _transition_to_failed(incident_id)
         await _emit_remediation_event(incident_id, "remediation_plan", "failed")
         return None
+
+
+async def _transition_to_failed(incident_id: uuid.UUID) -> None:
+    """Transition the incident from planning → failed so it is not stranded."""
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            current_val = await conn.fetchval(
+                "SELECT state FROM incidents WHERE id = $1", incident_id
+            )
+            if current_val is None:
+                return
+            current = IncidentState(current_val)
+            new_state = transition(current, IncidentState.FAILED)
+            await conn.execute(
+                "UPDATE incidents SET state = $2, updated_at = NOW() WHERE id = $1",
+                incident_id,
+                new_state.value,
+            )
+            logger.info(
+                "Incident transitioned to failed after remediation failure",
+                extra={"incident_id": str(incident_id)},
+            )
+    except Exception:
+        logger.warning(
+            "Could not transition incident to failed",
+            extra={"incident_id": str(incident_id)},
+        )
 
 
 async def _emit_remediation_event(

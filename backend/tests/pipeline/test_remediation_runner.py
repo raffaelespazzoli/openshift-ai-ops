@@ -139,6 +139,10 @@ class TestRunRemediationPipeline:
                 "src.pipeline.remediation_runner._emit_remediation_event",
                 new_callable=AsyncMock,
             ),
+            patch(
+                "src.pipeline.remediation_runner._transition_to_failed",
+                new_callable=AsyncMock,
+            ) as mock_fail,
         ):
             mock_graph = AsyncMock()
             mock_graph.ainvoke.return_value = {
@@ -152,6 +156,7 @@ class TestRunRemediationPipeline:
             result = await run_remediation_pipeline(incident_id)
 
         assert result is None
+        mock_fail.assert_called_once_with(incident_id)
 
     @pytest.mark.unit
     async def test_runner_returns_none_on_exception(self):
@@ -166,10 +171,15 @@ class TestRunRemediationPipeline:
                 "src.pipeline.remediation_runner._emit_remediation_event",
                 new_callable=AsyncMock,
             ),
+            patch(
+                "src.pipeline.remediation_runner._transition_to_failed",
+                new_callable=AsyncMock,
+            ) as mock_fail,
         ):
             result = await run_remediation_pipeline(incident_id)
 
         assert result is None
+        mock_fail.assert_called_once_with(incident_id)
 
     @pytest.mark.unit
     async def test_runner_emits_planning_and_planned_events(self):

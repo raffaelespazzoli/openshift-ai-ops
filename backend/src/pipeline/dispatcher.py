@@ -7,6 +7,7 @@ from a previous pod lifecycle. Then polls on a configurable interval.
 from __future__ import annotations
 
 import asyncio
+import uuid
 
 import asyncpg
 
@@ -15,6 +16,7 @@ from ..config.queue_settings import get_queue_settings
 from ..db import get_pool
 from ..db.queue import (
     dequeue_next,
+    get_active_pipeline_count,
     get_rce_incident_ids,
     recover_stale_items,
 )
@@ -253,7 +255,17 @@ async def dispatch_remediation(conn: asyncpg.Connection | asyncpg.Pool) -> None:
     The state transition acts as a durable claim — other replicas (or future
     poll cycles after a restart) will not see incidents in 'diagnosed' state
     once they have been claimed.
+
+    Respects the shared parallelism cap: remediation tasks count toward the
+    same ``active_pipelines`` limit as diagnosis pipelines.
     """
+    settings = get_queue_settings()
+    active_count = await get_active_pipeline_count(conn)
+    if active_count >= settings.parallelism_cap:
+        return
+
+    remaining_capacity = settings.parallelism_cap - active_count
+
     rows = await conn.fetch(
         """
         SELECT i.id AS incident_id
@@ -263,8 +275,9 @@ async def dispatch_remediation(conn: asyncpg.Connection | asyncpg.Pool) -> None:
         WHERE i.state = 'diagnosed'
           AND rp.id IS NULL
         ORDER BY i.updated_at ASC
-        LIMIT 5
-        """
+        LIMIT $1
+        """,
+        remaining_capacity,
     )
 
     for row in rows:
@@ -272,11 +285,16 @@ async def dispatch_remediation(conn: asyncpg.Connection | asyncpg.Pool) -> None:
         claimed = await _claim_for_planning(conn, incident_id)
         if not claimed:
             continue
+
+        pipeline_id = await _register_remediation_pipeline(conn, incident_id)
+
         logger.info(
             "Dispatching remediation for diagnosed incident",
             extra={"incident_id": str(incident_id)},
         )
-        task = asyncio.create_task(_run_remediation_task(incident_id))
+        task = asyncio.create_task(
+            _run_remediation_task(incident_id, pipeline_id)
+        )
         _inflight_tasks.add(task)
         task.add_done_callback(_remediation_task_done)
 
@@ -315,13 +333,54 @@ async def _claim_for_planning(
         return False
 
 
+async def _register_remediation_pipeline(
+    conn: asyncpg.Connection | asyncpg.Pool,
+    incident_id,
+) -> uuid.UUID:
+    """Insert an active_pipelines row for a remediation task.
+
+    This ensures remediation tasks count toward the shared parallelism cap
+    alongside diagnosis pipelines.
+    """
+    pipeline_id = uuid.uuid4()
+    await conn.execute(
+        """
+        INSERT INTO active_pipelines (id, queue_item_id, incident_id, started_at)
+        VALUES ($1, NULL, $2, NOW())
+        """,
+        pipeline_id,
+        incident_id,
+    )
+    return pipeline_id
+
+
+async def _complete_remediation_pipeline(pipeline_id: uuid.UUID) -> None:
+    """Mark a remediation active_pipelines row as completed."""
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE active_pipelines
+                SET completed_at = NOW()
+                WHERE id = $1 AND completed_at IS NULL
+                """,
+                pipeline_id,
+            )
+    except Exception:
+        logger.warning(
+            "Could not mark remediation pipeline as completed",
+            extra={"pipeline_id": str(pipeline_id)},
+        )
+
+
 def _remediation_task_done(task: asyncio.Task) -> None:
     """Cleanup callback for remediation tasks."""
     _inflight_tasks.discard(task)
     _inflight_items.pop(task, None)
 
 
-async def _run_remediation_task(incident_id) -> None:
+async def _run_remediation_task(incident_id, pipeline_id: uuid.UUID) -> None:
     """Wrapper for run_remediation_pipeline that catches all errors."""
     from .remediation_runner import run_remediation_pipeline
 
@@ -338,6 +397,8 @@ async def _run_remediation_task(incident_id) -> None:
             "Remediation task crashed unexpectedly",
             extra={"incident_id": str(incident_id)},
         )
+    finally:
+        await _complete_remediation_pipeline(pipeline_id)
 
 
 async def run_dispatcher() -> None:
