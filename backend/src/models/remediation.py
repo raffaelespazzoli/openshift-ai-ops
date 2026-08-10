@@ -11,6 +11,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -40,10 +41,13 @@ class RemediationStep(BaseModel):
     expected_outcome: str
 
 
+PreconditionType = Literal["rbac", "quota", "resource"]
+
+
 class Precondition(BaseModel):
     """A prerequisite that must be satisfied before remediation execution."""
 
-    type: str  # "rbac" | "quota" | "resource"
+    type: PreconditionType
     description: str
     requirement: str
     satisfied: bool | None = None

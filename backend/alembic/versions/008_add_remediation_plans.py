@@ -24,7 +24,7 @@ def upgrade() -> None:
         CREATE TABLE remediation_plans (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             incident_id UUID NOT NULL UNIQUE REFERENCES incidents(id),
-            diagnosis_id UUID NOT NULL,
+            diagnosis_id UUID NOT NULL REFERENCES immutable_diagnoses(id),
             plan JSONB NOT NULL,
             blast_radius TEXT NOT NULL,
             estimated_risk TEXT NOT NULL,

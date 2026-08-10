@@ -136,6 +136,21 @@ class TestPrecondition:
         assert p.type == "resource"
 
     @pytest.mark.unit
+    def test_invalid_type_rejected(self):
+        with pytest.raises(ValidationError):
+            _make_precondition(type="network")
+
+    @pytest.mark.unit
+    def test_empty_string_type_rejected(self):
+        with pytest.raises(ValidationError):
+            _make_precondition(type="")
+
+    @pytest.mark.unit
+    def test_numeric_type_rejected(self):
+        with pytest.raises(ValidationError):
+            _make_precondition(type=123)
+
+    @pytest.mark.unit
     def test_satisfied_defaults_to_none(self):
         p = _make_precondition()
         assert p.satisfied is None

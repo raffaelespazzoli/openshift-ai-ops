@@ -14,6 +14,7 @@ import uuid
 
 from ..config.logging import Component, get_logger
 from ..db import get_pool
+from ..db.checkpointer import get_checkpointer
 from ..db.remediation import load_immutable_artifact, persist_remediation_plan
 from ..models.events import EventNames, SSEEventData
 from ..models.remediation import RemediationPlan
@@ -46,8 +47,9 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
         async with pool.acquire() as conn:
             artifact = await load_immutable_artifact(conn, incident_id)
 
+        checkpointer = await get_checkpointer()
         builder = build_remediation_graph()
-        graph = builder.compile()
+        graph = builder.compile(checkpointer=checkpointer)
 
         initial_state: RemediationState = {
             "incident_id": str(incident_id),
@@ -56,7 +58,9 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
             "stage": "entered",
         }
 
-        final_state = await graph.ainvoke(initial_state)
+        thread_id = f"remediation-{incident_id}"
+        config = {"configurable": {"thread_id": thread_id}}
+        final_state = await graph.ainvoke(initial_state, config=config)
 
         plan_dict = final_state.get("remediation_plan")
         if plan_dict is None:

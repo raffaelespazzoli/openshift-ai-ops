@@ -77,6 +77,11 @@ class TestRunRemediationPipeline:
                 return_value=mock_artifact,
             ),
             patch(
+                "src.pipeline.remediation_runner.get_checkpointer",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
                 "src.pipeline.remediation_runner.build_remediation_graph"
             ) as mock_build,
             patch(
@@ -121,6 +126,11 @@ class TestRunRemediationPipeline:
                 "src.pipeline.remediation_runner.load_immutable_artifact",
                 new_callable=AsyncMock,
                 return_value=mock_artifact,
+            ),
+            patch(
+                "src.pipeline.remediation_runner.get_checkpointer",
+                new_callable=AsyncMock,
+                return_value=None,
             ),
             patch(
                 "src.pipeline.remediation_runner.build_remediation_graph"
@@ -180,6 +190,11 @@ class TestRunRemediationPipeline:
                 "src.pipeline.remediation_runner.load_immutable_artifact",
                 new_callable=AsyncMock,
                 return_value=mock_artifact,
+            ),
+            patch(
+                "src.pipeline.remediation_runner.get_checkpointer",
+                new_callable=AsyncMock,
+                return_value=None,
             ),
             patch(
                 "src.pipeline.remediation_runner.build_remediation_graph"

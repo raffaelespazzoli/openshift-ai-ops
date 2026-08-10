@@ -114,7 +114,8 @@ async def check_rbac_permissions(
             "verb": verb,
             "resource": resource,
             "error": str(exc),
-            "assumed_allowed": True,
+            "allowed": False,
+            "probe_failed": True,
         }
 
 

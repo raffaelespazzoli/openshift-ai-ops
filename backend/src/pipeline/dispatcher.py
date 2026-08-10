@@ -25,6 +25,7 @@ logger = get_logger(Component.PIPELINE)
 
 _inflight_tasks: set[asyncio.Task] = set()
 _inflight_items: dict[asyncio.Task, dict] = {}
+_inflight_remediations: set[str] = set()
 
 MAX_TRANSITION_RETRIES = 3
 _transition_retry_counts: dict[str, int] = {}
@@ -249,6 +250,8 @@ async def dispatch_remediation(conn: asyncpg.Connection | asyncpg.Pool) -> None:
 
     Queries for incidents in 'diagnosed' state that have an immutable_diagnoses
     row but no remediation_plans row, then spawns the remediation pipeline for each.
+    Uses _inflight_remediations as a claim set to prevent duplicate planners
+    for the same incident across successive poll cycles.
     """
     rows = await conn.fetch(
         """
@@ -265,13 +268,31 @@ async def dispatch_remediation(conn: asyncpg.Connection | asyncpg.Pool) -> None:
 
     for row in rows:
         incident_id = row["incident_id"]
+        claim_key = str(incident_id)
+        if claim_key in _inflight_remediations:
+            logger.debug(
+                "Remediation already in-flight, skipping",
+                extra={"incident_id": claim_key},
+            )
+            continue
+        _inflight_remediations.add(claim_key)
         logger.info(
             "Dispatching remediation for diagnosed incident",
-            extra={"incident_id": str(incident_id)},
+            extra={"incident_id": claim_key},
         )
         task = asyncio.create_task(_run_remediation_task(incident_id))
+        task._remediation_incident_id = incident_id  # type: ignore[attr-defined]
         _inflight_tasks.add(task)
-        task.add_done_callback(_task_done)
+        task.add_done_callback(_remediation_task_done)
+
+
+def _remediation_task_done(task: asyncio.Task) -> None:
+    """Cleanup callback for remediation tasks — releases the in-flight claim."""
+    _inflight_tasks.discard(task)
+    _inflight_items.pop(task, None)
+    incident_id = getattr(task, "_remediation_incident_id", None)
+    if incident_id is not None:
+        _inflight_remediations.discard(str(incident_id))
 
 
 async def _run_remediation_task(incident_id) -> None:
