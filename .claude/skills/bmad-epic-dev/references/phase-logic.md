@@ -160,6 +160,29 @@ Stories within the same dependency layer are independent — their dependencies 
 
 **Subagent type:** Use `best-of-n-runner` subagents when available — they run in isolated git worktrees automatically. Fall back to sequential `generalPurpose` subagents on the main branch if worktree subagents aren't available.
 
+### Worktree Path Isolation (CRITICAL)
+
+The `best-of-n-runner` creates a real git worktree (separate branch + separate directory), but does **not** sandbox file operations. If the subagent receives absolute paths pointing to the original repository, it will read/write there — defeating isolation entirely.
+
+**Rules for the orchestrator when spawning worktree subagents:**
+
+1. **Use relative paths only.** Never pass an absolute path to the original repository in subagent prompts. Use paths relative to the project root (e.g., `_bmad-output/implementation-artifacts/{story_key}.md`).
+
+2. **Include the worktree isolation block** (below) in every `best-of-n-runner` subagent prompt. This instructs the subagent to resolve `{project-root}` from its current working directory, not from any hardcoded path.
+
+3. **The commit (Step 4) happens on the story branch** inside the worktree. The orchestrator must NOT commit on behalf of the subagent on the main branch — the worktree subagent owns its own branch.
+
+**Worktree isolation block** (include verbatim in every `best-of-n-runner` prompt):
+```
+WORKTREE ISOLATION (CRITICAL):
+You are running in an isolated git worktree on branch epic-{N}/story-{N.M}.
+Your project root is your current working directory — do NOT use absolute
+paths to any other repository copy. All file reads and writes MUST use paths
+relative to your CWD or resolved from your CWD. If the skill resolves
+{project-root}, it MUST resolve to your current working directory.
+Run `git rev-parse --show-toplevel` if you need to confirm your project root.
+```
+
 For each dependency layer (in topological order):
 
 ### B.1: Launch Parallel Development
@@ -171,10 +194,18 @@ For each dependency layer (in topological order):
    **Step 1 — IMPLEMENT** (model: **Opus 4.6**): Spawn a `best-of-n-runner` subagent for `bmad-dev-story`:
    ```
    Run the bmad-dev-story skill for story {epicNum}.{storyNum}.
-   The story file is at: {implementation_artifacts}/{story_key}.md
+   The story file is at: _bmad-output/implementation-artifacts/{story_key}.md
    Process the story fully — implement all tasks, run all tests, mark complete.
    If you encounter a blocking issue requiring a human decision, describe it
    clearly and halt. Do NOT make assumptions on behalf of the user.
+
+   WORKTREE ISOLATION (CRITICAL):
+   You are running in an isolated git worktree on branch epic-{N}/story-{N.M}.
+   Your project root is your current working directory — do NOT use absolute
+   paths to any other repository copy. All file reads and writes MUST use paths
+   relative to your CWD or resolved from your CWD. If the skill resolves
+   {project-root}, it MUST resolve to your current working directory.
+   Run `git rev-parse --show-toplevel` if you need to confirm your project root.
 
    IMPORTANT: If you need a decision, your output MUST include:
    - status: decision_needed
@@ -191,11 +222,19 @@ For each dependency layer (in topological order):
    **Step 2 — CODE REVIEW** (model: **ChatGPT 5.4**): Spawn a separate subagent for `bmad-code-review` in the same worktree:
    ```
    Run the bmad-code-review skill to review the changes for story {epicNum}.{storyNum}.
-   The story file is at: {implementation_artifacts}/{story_key}.md
+   The story file is at: _bmad-output/implementation-artifacts/{story_key}.md
    Run the review fully and autonomously — complete all layers, produce the
    triage report.
    If the review raises a design/requirements question (not a code fix),
    describe it and halt — do NOT resolve design questions yourself.
+
+   WORKTREE ISOLATION (CRITICAL):
+   You are running in an isolated git worktree on branch epic-{N}/story-{N.M}.
+   Your project root is your current working directory — do NOT use absolute
+   paths to any other repository copy. All file reads and writes MUST use paths
+   relative to your CWD or resolved from your CWD. If the skill resolves
+   {project-root}, it MUST resolve to your current working directory.
+   Run `git rev-parse --show-toplevel` if you need to confirm your project root.
 
    IMPORTANT: If you need a decision, your output MUST include:
    - status: decision_needed
@@ -249,7 +288,21 @@ For each dependency layer (in topological order):
 
 ### B.3: Merge Branches
 
-6. After all stories in the layer succeed, merge each story branch back to the main branch **sequentially** (to maintain a clean linear history):
+6. After all stories in the layer succeed, **verify each worktree branch** before merging:
+
+   For each completed story branch, run from the **main branch**:
+   ```
+   git log --oneline epic-{N}/story-{N.M} --not HEAD | head -20
+   ```
+   Confirm at least one commit exists on the story branch beyond the merge base. If the branch has no commits (empty branch), the worktree subagent failed to commit — halt and report the issue.
+
+   Also verify the worktree is clean (no uncommitted changes that were missed):
+   ```
+   git -C <worktree-path> status --porcelain
+   ```
+   If dirty files exist, either the subagent forgot to commit or the worktree isolation failed. Halt and report.
+
+7. Merge each story branch back to the main branch **sequentially** (to maintain a clean linear history):
 
    For each completed story branch:
    ```
@@ -261,7 +314,9 @@ For each dependency layer (in topological order):
 
    If merge conflicts occur: halt with details. The user resolves conflicts manually, then re-invokes to resume. The conflicting branch is preserved for inspection.
 
-7. **Update story file status on the main branch.** After each successful merge, on the main branch:
+8. **Post-merge test verification.** After each merge, run the project's test suite on the main branch to confirm the merge didn't introduce regressions. If tests fail, halt with the merge SHA and failure details — the user must resolve before continuing.
+
+9. **Update story file status on the main branch.** After each successful merge, on the main branch:
    - Set the story file's `Status:` field to `done`
    - Populate the **Code Review Record** section if not already filled by the review subagent:
      - **Review Model Used**: the model slug used for code review
@@ -275,7 +330,7 @@ For each dependency layer (in topological order):
 
    This ensures story file status is always consistent with `sprint-status.yaml`, regardless of whether the work was done in a worktree.
 
-8. Clean up worktrees after successful merge:
+10. Clean up worktrees after successful merge:
 
    **Worktree cleanup:**
    ```
@@ -288,9 +343,9 @@ For each dependency layer (in topological order):
    git worktree remove --force <worktree-path>
    ```
 
-9. Update `sprint-status.yaml`: mark each merged story as `done`.
+11. Update `sprint-status.yaml`: mark each merged story as `done`.
 
-10. **Final consistency check:** After all stories in the layer are merged, verify that:
+12. **Final consistency check:** After all stories in the layer are merged, verify that:
     - Every merged story's file has `Status: done`
     - Every merged story in `sprint-status.yaml` is `done`
     - `git worktree list` shows only the main working tree (no orphaned worktrees)
@@ -298,14 +353,14 @@ For each dependency layer (in topological order):
 
 ### B.4: Report Layer Progress
 
-9. Report to the user:
+13. Report to the user:
    ```
    Layer {L} complete: {count} stories merged
    {story_list with review patch counts and file counts}
    Progress: {done}/{total} stories in epic {N}
    ```
 
-10. Continue to the next dependency layer.
+14. Continue to the next dependency layer.
 
 ### B.5: Sequential Fallback
 

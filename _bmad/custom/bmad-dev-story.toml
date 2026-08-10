@@ -27,6 +27,18 @@ the story is marked for review. Specifically:
 If any of these are empty or missing at completion time, the DoD check MUST fail.""",
 ]
 
+# Pre-flight gates executed BEFORE greeting — verify environment is correct.
+activation_steps_prepend = [
+  """GATE — Project root verification (worktree awareness).
+Run: git rev-parse --show-toplevel
+Set {project-root} to the output of that command (the git toplevel of the current working tree).
+All subsequent file operations MUST resolve paths from this {project-root}.
+Do NOT use any hardcoded absolute path from the prompt or config that differs from this value.
+If the resolved {project-root} contains 'worktree' or '.cursor/worktrees' in its path,
+you are running in an isolated worktree — this is expected for parallel development.
+Output: ✅ Project root resolved: {resolved_path}""",
+]
+
 # Pre-flight gates: run after greeting, before story execution begins.
 # The agent interprets these as sequential instructions.
 activation_steps_append = [

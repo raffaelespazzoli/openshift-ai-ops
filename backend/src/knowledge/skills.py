@@ -43,7 +43,11 @@ class SkillRegistry:
         self._load_skills()
 
     def _load_skills(self) -> None:
-        """Load skill definitions from the configured directory."""
+        """Load skill definitions from the configured directory.
+
+        Supports both flat and nested directory layouts (e.g., the upstream
+        openshift/agentic-skills repo uses nested subdirectories).
+        """
         skills_dir = Path(self._settings.skills_directory)
         if not skills_dir.exists():
             logger.warning(
@@ -52,18 +56,29 @@ class SkillRegistry:
             )
             return
 
-        for skill_path in sorted(skills_dir.iterdir()):
-            if skill_path.is_dir() and (skill_path / "SKILL.md").exists():
-                skill = self._parse_skill(skill_path)
-                if skill:
-                    if self._settings.enabled_skills and skill.name not in self._settings.enabled_skills:
-                        skill.enabled = False
-                    self._skills[skill.name] = skill
+        for skill_path in self._discover_skill_dirs(skills_dir):
+            skill = self._parse_skill(skill_path)
+            if skill:
+                if self._settings.enabled_skills and skill.name not in self._settings.enabled_skills:
+                    skill.enabled = False
+                self._skills[skill.name] = skill
 
         logger.info(
             "Skills loaded",
             extra={"total": len(self._skills), "path": str(skills_dir)},
         )
+
+    def _discover_skill_dirs(self, root: Path) -> list[Path]:
+        """Recursively find directories containing a SKILL.md file.
+
+        Handles both flat layouts (skills_dir/skill_name/SKILL.md) and nested
+        layouts (skills_dir/category/skill_name/SKILL.md) as used by the
+        upstream openshift/agentic-skills repository.
+        """
+        results: list[Path] = []
+        for path in sorted(root.rglob("SKILL.md")):
+            results.append(path.parent)
+        return results
 
     def _parse_skill(self, skill_path: Path) -> SkillDefinition | None:
         """Parse a skill definition from its SKILL.md file."""
@@ -98,7 +113,17 @@ class SkillRegistry:
         )
 
     def _extract_description(self, content: str) -> str:
-        """Extract a one-line description from SKILL.md content."""
+        """Extract description from SKILL.md content.
+
+        Checks YAML frontmatter `description` field first (upstream format),
+        then falls back to first non-heading text line.
+        """
+        match = re.search(r"description:\s*[\"'](.+?)[\"']", content)
+        if match:
+            return match.group(1)[:200]
+        match = re.search(r"description:\s*(.+)", content)
+        if match:
+            return match.group(1).strip()[:200]
         lines = content.strip().split("\n")
         for line in lines:
             stripped = line.strip()
@@ -109,10 +134,15 @@ class SkillRegistry:
     def _extract_default_tool(self, content: str, skill_name: str) -> str | None:
         """Extract the default MCP tool name from SKILL.md metadata.
 
-        Returns None when metadata is absent so callers can reject skills
-        that lack a bound MCP action.
+        Supports both the `default_tool` field (project format) and
+        `allowed-tools` (upstream openshift/agentic-skills format).
+        When `allowed-tools` contains a single entry, uses it as the
+        default tool. Returns None when metadata is absent.
         """
         match = re.search(r"default_tool:\s*[\"']?([^\s\"']+)[\"']?", content)
+        if match:
+            return match.group(1).strip("\"'")
+        match = re.search(r"allowed-tools:\s*\[?\s*[\"']?([^\s,\]\"']+)[\"']?", content)
         if match:
             return match.group(1).strip("\"'")
         return None
@@ -120,13 +150,22 @@ class SkillRegistry:
     def _extract_access_level(self, content: str) -> str:
         """Extract access_level from SKILL.md metadata.
 
+        Supports explicit `access_level` field (project format). When absent,
+        infers from `allowed-tools` — if all tools are known read-only MCP
+        actions (get_*, list_*, describe_*), classifies as 'read-only'.
         Defaults to 'read-write' (blocked) when metadata is missing or
-        malformed — fail-closed to prevent unvetted skills from entering
-        diagnosis (AD-2 RBAC Airlock).
+        ambiguous — fail-closed (AD-2 RBAC Airlock).
         """
         match = re.search(r"access_level:\s*[\"']?(read-only|read-write)[\"']?", content)
         if match:
             return match.group(1)
+        match = re.search(r"allowed-tools:\s*\[?([^\]]+)\]?", content)
+        if match:
+            tools_str = match.group(1).strip()
+            tools = [t.strip().strip("\"'") for t in tools_str.split(",")]
+            read_only_prefixes = ("get_", "list_", "describe_", "read_", "show_")
+            if all(t.startswith(read_only_prefixes) for t in tools if t):
+                return "read-only"
         return "read-write"
 
     def get_diagnosis_skills(self) -> list[SkillDefinition]:

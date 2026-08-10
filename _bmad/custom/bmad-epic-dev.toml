@@ -24,4 +24,13 @@ Track the iteration count starting at 1 for the first code review pass.
     4. Output: ⚠️ Review cap reached (5/5 iterations). Remaining findings documented as deferred debt.
 
 This prevents infinite review loops where fix attempts introduce new findings.""",
+
+  """STORY SIZE LIMIT (see project-context.md § Story Size Limit):
+During Step 0 (epic planning) and Phase A (story spec creation), estimate the
+changeset size for each story. If a story is expected to exceed ~25 files:
+- Present the estimate to the user during plan review
+- Propose split boundaries (if natural seams exist)
+- If the user approves an oversized story (25-50 files): set review cap to 7
+  rounds for that story and instruct the reviewer to inspect in logical chunks
+- If >50 files: refuse to proceed; the story MUST be split""",
 ]

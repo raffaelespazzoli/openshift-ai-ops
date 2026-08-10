@@ -237,17 +237,25 @@ async def persist_skeptic_artifacts(
     Must be called within the caller's transaction scope so that skeptic
     persistence, incident state transition, and queue completion are all
     atomic. Raises on failure to trigger transaction rollback.
+
+    When called for grouped-incident fan-out, rewrites any nested
+    incident_id references in challenge_history responses to match the
+    current incident_id, preventing primary ID leakage into sibling rows.
     """
     from ..db.diagnosis import persist_immutable_diagnosis
     from ..db.skeptic import persist_skeptic_record
 
     for entry in verdict.challenge_history:
+        response = entry["response"]
+        if isinstance(response, dict):
+            response = _rewrite_nested_incident_ids(response, incident_id)
+
         await persist_skeptic_record(
             conn,
             incident_id=incident_id,
             round_number=entry["round"],
             challenge=entry["challenge"],
-            response=entry["response"],
+            response=response,
             verdict=verdict.model_dump(mode="json")
             if entry == verdict.challenge_history[-1]
             else None,
@@ -260,7 +268,9 @@ async def persist_skeptic_artifacts(
         conn,
         incident_id=incident_id,
         diagnosis=diagnosis_data,
-        skeptic_verdict=verdict.model_dump(mode="json"),
+        skeptic_verdict=_rewrite_nested_incident_ids(
+            verdict.model_dump(mode="json"), incident_id
+        ),
         sealed_at=sealed.sealed_at,
     )
 
@@ -268,6 +278,30 @@ async def persist_skeptic_artifacts(
         "Skeptic artifacts persisted",
         extra={"incident_id": incident_id},
     )
+
+
+def _rewrite_nested_incident_ids(data: dict, target_id: str) -> dict:
+    """Recursively rewrite any 'incident_id' fields in nested dicts/lists.
+
+    Prevents primary incident ID leakage into sibling skeptic_reviews rows
+    during grouped-incident fan-out.
+    """
+    import copy
+
+    result = copy.deepcopy(data)
+
+    def _walk(obj):
+        if isinstance(obj, dict):
+            if "incident_id" in obj:
+                obj["incident_id"] = str(target_id)
+            for v in obj.values():
+                _walk(v)
+        elif isinstance(obj, list):
+            for item in obj:
+                _walk(item)
+
+    _walk(result)
+    return result
 
 
 async def finalize_node(state: DiagnosisState) -> dict:

@@ -17,6 +17,34 @@ spec:
         app.kubernetes.io/name: {{ .Chart.Name }}-backend
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      initContainers:
+        - name: migrate
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          command: ["sh", "-c"]
+          args:
+            - |
+              python -c "
+              import psycopg
+              conn = psycopg.connect(
+                  host='{{ .Release.Name }}-postgresql',
+                  port={{ .Values.postgresql.port }},
+                  user='{{ .Values.postgresql.credentials.username }}',
+                  password='$POSTGRES_PASSWORD',
+                  dbname='{{ .Values.postgresql.credentials.database }}',
+                  autocommit=True,
+              )
+              conn.execute('CREATE EXTENSION IF NOT EXISTS vector')
+              conn.close()
+              " && alembic -c /app/alembic.ini upgrade head
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-postgresql
+                  key: password
+            - name: DATABASE_URL
+              value: "postgresql+psycopg://{{ .Values.postgresql.credentials.username }}:$(POSTGRES_PASSWORD)@{{ .Release.Name }}-postgresql:{{ .Values.postgresql.port }}/{{ .Values.postgresql.credentials.database }}"
       containers:
         - name: backend
           image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
@@ -76,9 +104,32 @@ spec:
             - name: ALERTMANAGER_URL
               value: "{{ .Values.alertmanager.url }}"
             {{- end }}
+            - name: LLM_ENDPOINT
+              value: "{{ .Values.llm.endpoint }}"
+            - name: LLM_MODEL
+              value: "{{ .Values.llm.model }}"
+            - name: LLM_TEMPERATURE
+              value: "{{ .Values.llm.temperature }}"
+            - name: LLM_MAX_TOKENS
+              value: "{{ .Values.llm.maxTokens }}"
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.llm.apiKeySecret.name }}
+                  key: {{ .Values.llm.apiKeySecret.key }}
+            - name: EMBEDDING_ENDPOINT
+              value: "{{ .Values.llm.endpoint }}"
+            - name: EMBEDDING_MODEL
+              value: "{{ .Values.llm.embeddingModel | default "text-embedding-3-small" }}"
+            - name: EMBEDDING_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.llm.apiKeySecret.name }}
+                  key: {{ .Values.llm.apiKeySecret.key }}
           volumeMounts:
             - name: agentic-skills
               mountPath: /skills
+              subPath: skills
               readOnly: true
           livenessProbe:
             tcpSocket:

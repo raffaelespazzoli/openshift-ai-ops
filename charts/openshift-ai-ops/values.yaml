@@ -1,9 +1,9 @@
 backend:
   replicaCount: 1
   image:
-    repository: quay.io/openshift-ai-ops/backend
+    repository: quay.io/raffaelespazzoli/openshift-ai-ops-backend
     tag: "0.1.0"
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   port: 8000
   resources:
     requests:
@@ -81,9 +81,18 @@ okpMcp:
 
 agenticSkills:
   image:
-    repository: quay.io/openshift/agentic-skills
-    tag: "latest"
-    pullPolicy: IfNotPresent
+    repository: quay.io/raffaelespazzoli/openshift-ai-ops-skills
+    tag: "0.1.0"
+    pullPolicy: Always
+
+llm:
+  endpoint: "https://maas-rhdp.apps.maas.redhatworkshops.io/v1"
+  model: "gpt-oss-120b"
+  temperature: "0.0"
+  maxTokens: "4096"
+  apiKeySecret:
+    name: openshift-ai-ops-llm
+    key: api-key
 
 learningStore:
   decayHalfLifeDays: 90

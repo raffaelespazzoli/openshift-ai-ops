@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-08-08
-last_updated: 2026-08-09T16:34:00
+last_updated: 2026-08-10T13:30:00
 project: openshift-ai-ops
 project_key: NOKEY
 tracking_system: file-system
@@ -63,7 +63,7 @@ development_status:
   2-2-orchestrator-agent-and-runbook-enriched-diagnosis: done
   2-3-rhokp-learning-store-and-agentic-skills-integration: done
   2-4-diagnosis-skeptic-and-immutable-handoff: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   # Epic 3: Remediation, Execution & Outcome
   epic-3: backlog
@@ -109,30 +109,47 @@ development_status:
 # ACTION ITEMS:
 # =============
 action_items:
+  # Epic 1 action items (all completed during Epic 2 development)
   - epic: 1
     action: "Monitor review round counts in Epic 2 — no story should exceed 5 rounds (review cap enforced via bmad-epic-dev.toml)"
     owner: "Dev agent"
-    status: open
+    status: done
 
   - epic: 1
     action: "LangGraph spike before Epic 2 — understand checkpoint persistence, graph patterns, langgraph_* schema interaction"
     owner: "Dev agent"
-    status: open
+    status: done
 
   - epic: 1
     action: "MCP Server container image — identify or build read-only instance, validate Streamable HTTP transport"
     owner: "Dev agent"
-    status: open
+    status: done
 
   - epic: 1
     action: "Runbook corpus — source OpenShift runbooks, define chunking and embedding strategy for pgvector"
     owner: "Dev agent"
-    status: open
+    status: done
 
   - epic: 1
     action: "Define LLM test strategy — mocking patterns for unit tests, contract tests for MCP interactions"
     owner: "Dev agent"
-    status: open
+    status: done
+
+  # Epic 2 action items (from retrospective 2026-08-10)
+  - epic: 2
+    action: "Resolve Epic 2 deferred debt before Epic 3 — prioritize the 1 HIGH (skills metadata contract) and 3 MEDIUM items (volume mount, nested discovery, grouped incident ID leak) that affect downstream stories"
+    owner: "Dev agent"
+    status: done
+
+  - epic: 2
+    action: "Story size limit — consider splitting stories if changeset exceeds ~25 files; review effectiveness degrades at scale (all 4 Epic 2 stories hit the 5-round cap)"
+    owner: "Dev agent"
+    status: done
+
+  - epic: 2
+    action: "Test environment bootstrap — add Makefile target or script that configures Podman socket, DOCKER_HOST, TESTCONTAINERS_RYUK_DISABLED for integration test readiness"
+    owner: "Dev agent"
+    status: done
 
 # DEFERRED WORK:
 # ==============

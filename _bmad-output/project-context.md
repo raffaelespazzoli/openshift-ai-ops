@@ -186,6 +186,13 @@ Five test layers, each with its own infrastructure and trigger:
 - **Feature branches off main** — short-lived branches, merged via PR.
 - **Conventional commits** — `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:` prefixes. Scope in parentheses maps to directory: `feat(pipeline):`, `fix(api):`, `feat(frontend):`, `chore(charts):`.
 
+#### Story Size Limit
+
+- **Target: ≤25 files changed per story.** Stories touching more than ~25 files consistently degrade review quality — reviewers find cascading issues in large diffs, triggering fix-review loops that hit the iteration cap.
+- **During planning:** if a story is expected to exceed 25 files, split it into independently reviewable stories at natural seam boundaries (e.g., separate backend logic from Helm chart changes, or split by domain module).
+- **When splitting is impractical** (cross-cutting refactors, renames, migrations): the story proceeds but review MUST be chunked — the reviewer inspects logical groups of files (e.g., models first, then pipeline, then tests) rather than one monolithic diff. The review iteration cap is extended from 5 to 7 rounds for oversized stories to accommodate chunked review.
+- **Hard ceiling: 50 files.** If a single story touches >50 files, it MUST be split. No exceptions — at that scale, the changeset is untestable and unreviewable in a single pass.
+
 #### Deployment
 
 - **Single `helm install`** — the entire system deploys from one chart into one namespace. No multi-chart orchestration.
