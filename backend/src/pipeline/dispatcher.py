@@ -244,6 +244,55 @@ async def _transition_incidents_to_diagnosing(
     return True
 
 
+async def dispatch_remediation(conn: asyncpg.Connection | asyncpg.Pool) -> None:
+    """Dispatch remediation planning for diagnosed incidents missing a plan.
+
+    Queries for incidents in 'diagnosed' state that have an immutable_diagnoses
+    row but no remediation_plans row, then spawns the remediation pipeline for each.
+    """
+    rows = await conn.fetch(
+        """
+        SELECT i.id AS incident_id
+        FROM incidents i
+        JOIN immutable_diagnoses id ON id.incident_id = i.id
+        LEFT JOIN remediation_plans rp ON rp.incident_id = i.id
+        WHERE i.state = 'diagnosed'
+          AND rp.id IS NULL
+        ORDER BY i.updated_at ASC
+        LIMIT 5
+        """
+    )
+
+    for row in rows:
+        incident_id = row["incident_id"]
+        logger.info(
+            "Dispatching remediation for diagnosed incident",
+            extra={"incident_id": str(incident_id)},
+        )
+        task = asyncio.create_task(_run_remediation_task(incident_id))
+        _inflight_tasks.add(task)
+        task.add_done_callback(_task_done)
+
+
+async def _run_remediation_task(incident_id) -> None:
+    """Wrapper for run_remediation_pipeline that catches all errors."""
+    from .remediation_runner import run_remediation_pipeline
+
+    try:
+        await run_remediation_pipeline(incident_id)
+    except asyncio.CancelledError:
+        logger.info(
+            "Remediation task cancelled during shutdown",
+            extra={"incident_id": str(incident_id)},
+        )
+        raise
+    except Exception:
+        logger.exception(
+            "Remediation task crashed unexpectedly",
+            extra={"incident_id": str(incident_id)},
+        )
+
+
 async def run_dispatcher() -> None:
     """Background dispatch loop.
 
@@ -284,6 +333,7 @@ async def run_dispatcher() -> None:
             pool = await get_pool()
             async with pool.acquire() as conn:
                 await check_ttl_expired_items(conn)
+                await dispatch_remediation(conn)
 
                 item = await dequeue_next(conn)
                 if item:

@@ -26,6 +26,13 @@ from .diagnosis import (
 from .events import BusEvent, EventBus, EventNames, SSEEventData
 from .skeptic import SkepticChallenge, SkepticRebuttal, SkepticResponse, SkepticVerdict
 from .incident import Incident, Severity
+from .remediation import (
+    BlastRadius,
+    Precondition,
+    RemediationPlan,
+    RemediationStep,
+    RiskLevel,
+)
 from .case_record import CaseRecordSummary
 from .knowledge import CompletenessResult, RunbookChunk
 from .root_cause_event import CorrelationEvidence, CorrelationLayer, RootCauseEvent
@@ -45,6 +52,7 @@ __all__ = [
     "AlertManagerWebhook",
     "AlertStatus",
     "ApiError",
+    "BlastRadius",
     "ApiMeta",
     "ApiResponse",
     "BusEvent",
@@ -66,6 +74,10 @@ __all__ = [
     "Incident",
     "IncidentState",
     "InvalidTransitionError",
+    "Precondition",
+    "RemediationPlan",
+    "RemediationStep",
+    "RiskLevel",
     "ROOT_CAUSE_TAXONOMY",
     "RootCauseEvent",
     "RunbookChunk",
