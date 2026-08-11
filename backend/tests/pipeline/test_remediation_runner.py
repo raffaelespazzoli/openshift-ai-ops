@@ -442,6 +442,81 @@ class TestRunnerPolicyDecision:
         assert "executing" in str(update_call[0])
 
     @pytest.mark.unit
+    async def test_runner_persists_artifacts_on_cas_failure(self):
+        """Artifacts must be persisted even when CAS state transition loses the race."""
+        incident_id = uuid.uuid4()
+        plan = _make_plan(incident_id=incident_id)
+
+        mock_artifact = MagicMock()
+        mock_artifact.model_dump.return_value = {}
+
+        mock_conn = AsyncMock()
+        mock_pool = _make_mock_pool(mock_conn, current_state="executing")
+
+        async def mock_get_pool():
+            return mock_pool
+
+        graph_output = {
+            "remediation_plan": plan.model_dump(mode="json"),
+            "dry_run_result": _make_dry_run_dict(incident_id, plan.id),
+            "policy_decision": _make_policy_decision(incident_id, plan.id, approved=False),
+            "stage": "policy_decided",
+        }
+
+        with (
+            patch("src.pipeline.remediation_runner.get_pool", side_effect=mock_get_pool),
+            patch(
+                "src.pipeline.remediation_runner.load_immutable_artifact",
+                new_callable=AsyncMock,
+                return_value=mock_artifact,
+            ),
+            patch(
+                "src.pipeline.remediation_runner.get_checkpointer",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "src.pipeline.remediation_runner.build_remediation_graph"
+            ) as mock_build,
+            patch(
+                "src.pipeline.remediation_runner.persist_remediation_plan",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.remediation_runner.persist_dry_run_result",
+                new_callable=AsyncMock,
+            ) as mock_persist_dr,
+            patch(
+                "src.pipeline.remediation_runner.persist_policy_decision",
+                new_callable=AsyncMock,
+            ) as mock_persist_pd,
+            patch(
+                "src.pipeline.remediation_runner.transition_incident_state",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "src.pipeline.remediation_runner._emit_remediation_event",
+                new_callable=AsyncMock,
+            ) as mock_emit,
+        ):
+            mock_graph = AsyncMock()
+            mock_graph.ainvoke.return_value = graph_output
+            mock_builder = MagicMock()
+            mock_builder.compile.return_value = mock_graph
+            mock_build.return_value = mock_builder
+
+            result = await run_remediation_pipeline(incident_id)
+
+        assert result is not None
+        mock_persist_dr.assert_called_once()
+        mock_persist_pd.assert_called_once()
+
+        emit_calls = [c[0] for c in mock_emit.call_args_list]
+        stages = [c[1] for c in emit_calls]
+        assert "policy_gate" not in stages
+
+    @pytest.mark.unit
     async def test_runner_emits_policy_gate_event(self):
         incident_id = uuid.uuid4()
         plan = _make_plan(incident_id=incident_id)

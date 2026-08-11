@@ -5,6 +5,10 @@ the read-write MCP Server's ``apply_resource`` tool with
 ``--dry-run=server``. The server-side dry-run validates RBAC,
 quota, and admission webhooks in a single pass without persisting
 changes.
+
+Not all remediation steps are dry-runnable. Imperative operations
+(restart, scale, patch, etc.) are skipped with an honest report
+of what could and could not be validated.
 """
 
 from __future__ import annotations
@@ -17,6 +21,8 @@ from .mcp_readwrite_client import ReadWriteMCPClient
 
 logger = get_logger(Component.PIPELINE)
 
+DRY_RUNNABLE_ACTIONS: frozenset[str] = frozenset({"apply", "create"})
+
 
 async def run_dry_run_preflight(
     plan: RemediationPlan,
@@ -26,7 +32,9 @@ async def run_dry_run_preflight(
     """Execute dry-run pre-flight validation against the live cluster.
 
     Uses the read-write MCP Server to validate each remediation step
-    via --dry-run=server without persisting changes.
+    via --dry-run=server without persisting changes.  Imperative steps
+    (restart, scale, patch, etc.) are marked as skipped because they
+    cannot be validated through server-side dry-run.
     """
     client = mcp_client or ReadWriteMCPClient()
     step_results: list[DryRunStepResult] = []
@@ -38,6 +46,19 @@ async def run_dry_run_preflight(
                 command="(no command)",
                 success=True,
                 message="Informational step — no command to validate",
+                skipped=True,
+            ))
+            continue
+
+        if not _is_dry_runnable(step):
+            step_results.append(DryRunStepResult(
+                step_order=step.order,
+                command=step.command,
+                success=True,
+                message=(
+                    f"Imperative action '{step.action}' is not dry-runnable — skipped"
+                ),
+                skipped=True,
             ))
             continue
 
@@ -58,6 +79,11 @@ async def run_dry_run_preflight(
         dry_run_passed=overall,
         dry_run_errors=errors,
     )
+
+
+def _is_dry_runnable(step: RemediationStep) -> bool:
+    """Determine whether a step can be validated via server-side dry-run."""
+    return step.action.lower() in DRY_RUNNABLE_ACTIONS
 
 
 async def _validate_step(

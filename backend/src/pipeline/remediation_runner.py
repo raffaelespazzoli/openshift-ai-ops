@@ -113,13 +113,12 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
                             },
                             conn=conn,
                         )
+                    await _persist_policy_artifacts(
+                        conn, incident_id, final_state
+                    )
                     transition_applied = await _handle_policy_decision(
                         conn, incident_id, final_state
                     )
-                    if transition_applied:
-                        await _persist_policy_artifacts(
-                            conn, incident_id, final_state
-                        )
         except Exception:
             if final_state.get("skeptic_verdict"):
                 await _emit_remediation_event(

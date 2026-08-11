@@ -4,7 +4,7 @@ baseline_commit: ff71b46e1e558f55c8eb9acdff93ca2c93dde70a
 
 # Story 3.3: Dry-Run Pre-Flight & Policy Gate
 
-Status: review
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -762,3 +762,12 @@ GPT-5.4 (Review Round 1)
 3. **RBAC contract** (`dry_run.py`): `_check_rbac()` now uses `get_resources(kind="SelfSubjectAccessReview", namespace=..., verb=..., resource=...)` matching the established planner-side RBAC helper. Replaced `"no" in result` substring check with `"allowed: false"` for precise matching.
 4. **Evidence zip() bug** (`policy_gate.py`): `_check_causal_chain_evidence()` now iterates over `artifact.evidence` directly per causal chain element, avoiding set-deduplication and `zip()` truncation.
 5. **Quota simplification** (`dry_run.py`): Removed `_check_quota()` entirely. Quota validated implicitly by server-side dry-run. `quota_check_passed` always `True`.
+
+### Review Round 4 — 2026-08-11
+**Review model:** GPT-5.4
+**Fix model:** not yet applied
+
+#### Findings
+- [ ] [Review][Patch] Dry-run uses `apply_resource` for non-apply commands [`backend/src/pipeline/dry_run.py:69`] — `run_dry_run_preflight()` forwards every non-empty `step.command` to MCP `apply_resource`, but `RemediationStep` and existing test/plan examples allow generic command strings and non-`apply` actions. Patch/restart/set-resources style steps therefore cannot be validated with the correct MCP operation or manifest payload, so AC #1's server-side validation is not reliably exercised for real plans.
+- [ ] [Review][Patch] Any non-exception MCP response is treated as a passed dry-run [`backend/src/pipeline/dry_run.py:77`] — after `client.query()` returns, `_validate_step()` unconditionally records `success=True` and only treats exceptions as failures. Because `ReadWriteMCPClient` collapses tool output to raw text, a server-side validation or admission denial returned as an error payload instead of an exception would still be persisted as a successful dry-run, violating AC #1.
+- [ ] [Review][Patch] CAS miss drops persisted policy context [`backend/src/pipeline/remediation_runner.py:116`] — `persist_dry_run_result()` and `persist_policy_decision()` only run after `_handle_policy_decision()` applies the state transition. If another actor changes the incident state first, the runner skips persistence and later dry-run/policy SSE completion events, so the approval UI loses the context AC #2 and AC #7 require.

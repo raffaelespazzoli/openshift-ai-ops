@@ -22,6 +22,7 @@ class DryRunStepResult(BaseModel):
     success: bool
     message: str
     error_detail: str | None = None
+    skipped: bool = False
 
 
 class DryRunResult(BaseModel):

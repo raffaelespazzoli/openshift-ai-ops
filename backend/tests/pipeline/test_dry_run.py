@@ -59,10 +59,10 @@ def _make_plan(incident_id=None, steps=None) -> RemediationPlan:
         steps=steps or [
             RemediationStep(
                 order=1,
-                description="Increase memory limit",
-                command="oc set resources deployment/test --limits=memory=512Mi",
+                description="Apply fixed deployment manifest",
+                command="oc apply -f deployment-fix.yaml",
                 resource="deployment/test",
-                action="patch",
+                action="apply",
                 expected_outcome="Memory limit increased",
             ),
         ],
@@ -227,4 +227,131 @@ class TestDryRunInformationalSteps:
         assert len(result.step_results) == 2
         assert result.step_results[0].command == "(no command)"
         assert result.step_results[0].success is True
+        assert result.step_results[0].skipped is True
         assert result.step_results[1].success is True
+        assert result.step_results[1].skipped is False
+
+
+class TestDryRunImperativeSteps:
+    """Imperative actions (restart, scale, patch, etc.) are not dry-runnable."""
+
+    @pytest.mark.unit
+    async def test_imperative_restart_skipped(self):
+        mock_client = AsyncMock()
+        mock_client.query = AsyncMock(return_value="ok")
+
+        steps = [
+            RemediationStep(
+                order=1,
+                description="Restart deployment",
+                command="oc rollout restart deployment/test",
+                resource="deployment/test",
+                action="restart",
+                expected_outcome="Deployment restarted",
+            ),
+        ]
+        plan = _make_plan(steps=steps)
+        artifact = _make_artifact(plan.incident_id)
+
+        result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
+
+        assert result.dry_run_passed is True
+        assert result.step_results[0].skipped is True
+        assert result.step_results[0].success is True
+        assert "not dry-runnable" in result.step_results[0].message
+        mock_client.query.assert_not_called()
+
+    @pytest.mark.unit
+    async def test_imperative_scale_skipped(self):
+        mock_client = AsyncMock()
+        mock_client.query = AsyncMock(return_value="ok")
+
+        steps = [
+            RemediationStep(
+                order=1,
+                description="Scale deployment",
+                command="oc scale deployment/test --replicas=3",
+                resource="deployment/test",
+                action="scale",
+                expected_outcome="Scaled to 3",
+            ),
+        ]
+        plan = _make_plan(steps=steps)
+        artifact = _make_artifact(plan.incident_id)
+
+        result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
+
+        assert result.dry_run_passed is True
+        assert result.step_results[0].skipped is True
+        assert "not dry-runnable" in result.step_results[0].message
+        mock_client.query.assert_not_called()
+
+    @pytest.mark.unit
+    async def test_imperative_patch_skipped(self):
+        mock_client = AsyncMock()
+        mock_client.query = AsyncMock(return_value="ok")
+
+        steps = [
+            RemediationStep(
+                order=1,
+                description="Patch resources",
+                command="oc set resources deployment/test --limits=memory=512Mi",
+                resource="deployment/test",
+                action="patch",
+                expected_outcome="Memory limit increased",
+            ),
+        ]
+        plan = _make_plan(steps=steps)
+        artifact = _make_artifact(plan.incident_id)
+
+        result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
+
+        assert result.dry_run_passed is True
+        assert result.step_results[0].skipped is True
+        mock_client.query.assert_not_called()
+
+    @pytest.mark.unit
+    async def test_mixed_apply_and_imperative(self):
+        """Apply steps are dry-run validated; imperative steps are skipped."""
+        mock_client = AsyncMock()
+        mock_client.query = AsyncMock(return_value="resource applied (dry-run)")
+
+        steps = [
+            RemediationStep(
+                order=1,
+                description="Apply manifest",
+                command="oc apply -f fix.yaml",
+                resource="pod/test",
+                action="apply",
+                expected_outcome="Applied",
+            ),
+            RemediationStep(
+                order=2,
+                description="Restart deployment",
+                command="oc rollout restart deployment/test",
+                resource="deployment/test",
+                action="restart",
+                expected_outcome="Restarted",
+            ),
+            RemediationStep(
+                order=3,
+                description="Create resource",
+                command="oc create -f new.yaml",
+                resource="configmap/test",
+                action="create",
+                expected_outcome="Created",
+            ),
+        ]
+        plan = _make_plan(steps=steps)
+        artifact = _make_artifact(plan.incident_id)
+
+        result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
+
+        assert result.dry_run_passed is True
+        assert result.step_results[0].skipped is False
+        assert result.step_results[0].success is True
+        assert result.step_results[1].skipped is True
+        assert result.step_results[1].success is True
+        assert result.step_results[2].skipped is False
+        assert result.step_results[2].success is True
+        assert mock_client.query.call_count == 2
