@@ -35,9 +35,8 @@ async def persist_dry_run_result(
             """
             INSERT INTO dry_run_results
                 (id, incident_id, plan_id, step_results,
-                 rbac_check_passed, quota_check_passed,
-                 admission_check_passed, overall_passed, created_at)
-            VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9)
+                 dry_run_passed, dry_run_errors, created_at)
+            VALUES ($1, $2, $3, $4::jsonb, $5, $6::jsonb, $7)
             """,
             result.id,
             result.incident_id,
@@ -46,17 +45,15 @@ async def persist_dry_run_result(
                 [sr.model_dump(mode="json") for sr in result.step_results],
                 default=str,
             ),
-            result.rbac_check_passed,
-            result.quota_check_passed,
-            result.admission_check_passed,
-            result.overall_passed,
+            result.dry_run_passed,
+            json.dumps(result.dry_run_errors),
             result.created_at,
         )
         logger.info(
             "Dry-run result persisted",
             extra={
                 "incident_id": str(result.incident_id),
-                "overall_passed": result.overall_passed,
+                "dry_run_passed": result.dry_run_passed,
             },
         )
     except Exception:
@@ -137,15 +134,17 @@ async def load_dry_run_result(
     if isinstance(step_results, str):
         step_results = json.loads(step_results)
 
+    dry_run_errors = row["dry_run_errors"]
+    if isinstance(dry_run_errors, str):
+        dry_run_errors = json.loads(dry_run_errors)
+
     return DryRunResult(
         id=row["id"],
         incident_id=row["incident_id"],
         plan_id=row["plan_id"],
         step_results=step_results,
-        rbac_check_passed=row["rbac_check_passed"],
-        quota_check_passed=row["quota_check_passed"],
-        admission_check_passed=row["admission_check_passed"],
-        overall_passed=row["overall_passed"],
+        dry_run_passed=row["dry_run_passed"],
+        dry_run_errors=dry_run_errors or [],
         created_at=row["created_at"],
     )
 

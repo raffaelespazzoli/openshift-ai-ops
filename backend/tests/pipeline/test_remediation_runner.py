@@ -284,10 +284,8 @@ def _make_dry_run_dict(incident_id, plan_id) -> dict:
         step_results=[
             DryRunStepResult(step_order=1, command="cmd", success=True, message="ok"),
         ],
-        rbac_check_passed=True,
-        quota_check_passed=True,
-        admission_check_passed=True,
-        overall_passed=True,
+        dry_run_passed=True,
+        dry_run_errors=[],
     )
     return dr.model_dump(mode="json")
 

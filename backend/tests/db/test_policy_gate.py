@@ -67,10 +67,8 @@ class TestPersistDryRunResult:
                     message="denied", error_detail="RBAC",
                 ),
             ],
-            rbac_check_passed=True,
-            quota_check_passed=True,
-            admission_check_passed=False,
-            overall_passed=False,
+            dry_run_passed=False,
+            dry_run_errors=["RBAC"],
         )
 
         result_id = await persist_dry_run_result(db_conn, dr)
@@ -80,7 +78,8 @@ class TestPersistDryRunResult:
         assert loaded is not None
         assert loaded.id == dr.id
         assert loaded.incident_id == incident_id
-        assert loaded.overall_passed is False
+        assert loaded.dry_run_passed is False
+        assert loaded.dry_run_errors == ["RBAC"]
         assert len(loaded.step_results) == 2
         assert loaded.step_results[0].success is True
         assert loaded.step_results[1].success is False
@@ -98,10 +97,8 @@ class TestPersistDryRunResult:
                     step_order=1, command="cmd", success=True, message="ok"
                 ),
             ],
-            rbac_check_passed=True,
-            quota_check_passed=True,
-            admission_check_passed=True,
-            overall_passed=True,
+            dry_run_passed=True,
+            dry_run_errors=[],
         )
 
         await persist_dry_run_result(db_conn, dr)
@@ -114,10 +111,8 @@ class TestPersistDryRunResult:
                     step_order=1, command="cmd2", success=True, message="ok"
                 ),
             ],
-            rbac_check_passed=True,
-            quota_check_passed=True,
-            admission_check_passed=True,
-            overall_passed=True,
+            dry_run_passed=True,
+            dry_run_errors=[],
         )
 
         with pytest.raises(Exception):

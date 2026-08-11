@@ -25,10 +25,8 @@ def upgrade() -> None:
             incident_id UUID NOT NULL UNIQUE REFERENCES incidents(id),
             plan_id UUID NOT NULL REFERENCES remediation_plans(id),
             step_results JSONB NOT NULL,
-            rbac_check_passed BOOLEAN NOT NULL,
-            quota_check_passed BOOLEAN NOT NULL,
-            admission_check_passed BOOLEAN NOT NULL,
-            overall_passed BOOLEAN NOT NULL,
+            dry_run_passed BOOLEAN NOT NULL,
+            dry_run_errors JSONB NOT NULL DEFAULT '[]'::jsonb,
             created_at TIMESTAMPTZ DEFAULT NOW()
         )
     """)

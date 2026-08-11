@@ -142,9 +142,8 @@ async def dry_run_node(state: RemediationState) -> dict:
         state_before="validated",
         state_after="dry_run_complete",
         extra_detail={
-            "overall_passed": dry_run_result.overall_passed,
-            "rbac_passed": dry_run_result.rbac_check_passed,
-            "quota_passed": dry_run_result.quota_check_passed,
+            "dry_run_passed": dry_run_result.dry_run_passed,
+            "error_count": len(dry_run_result.dry_run_errors),
         },
     )
 

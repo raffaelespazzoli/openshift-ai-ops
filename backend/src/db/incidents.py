@@ -214,6 +214,49 @@ async def get_incident_detail(
     return result
 
 
+async def transition_incident_state(
+    conn: asyncpg.Connection | asyncpg.Pool,
+    incident_id: uuid.UUID,
+    from_state: str,
+    to_state: str,
+) -> bool:
+    """Atomically transition an incident from one state to another.
+
+    Uses a CAS (compare-and-swap) pattern: the UPDATE only succeeds
+    if the row's current state matches from_state.
+
+    Returns True if the transition was applied, False if the row was
+    not found or the state had already changed (concurrent modification).
+    """
+    result = await conn.execute(
+        "UPDATE incidents SET state = $1, updated_at = NOW() "
+        "WHERE id = $2 AND state = $3",
+        to_state,
+        incident_id,
+        from_state,
+    )
+    applied = result != "UPDATE 0"
+    if applied:
+        logger.info(
+            "Incident state transitioned",
+            extra={
+                "incident_id": str(incident_id),
+                "from_state": from_state,
+                "to_state": to_state,
+            },
+        )
+    else:
+        logger.warning(
+            "Incident state transition failed — concurrent modification or missing row",
+            extra={
+                "incident_id": str(incident_id),
+                "expected_from": from_state,
+                "target_to": to_state,
+            },
+        )
+    return applied
+
+
 async def record_resolved_alert(
     conn: asyncpg.Connection | asyncpg.Pool,
     fingerprint: str,

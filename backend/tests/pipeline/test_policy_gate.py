@@ -103,10 +103,8 @@ def _make_dry_run(
                 step_order=1, command="cmd", success=True, message="ok"
             ),
         ],
-        rbac_check_passed=True,
-        quota_check_passed=True,
-        admission_check_passed=True,
-        overall_passed=overall_passed,
+        dry_run_passed=overall_passed,
+        dry_run_errors=[] if overall_passed else ["validation failed"],
     )
 
 

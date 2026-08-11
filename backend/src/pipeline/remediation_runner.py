@@ -14,6 +14,7 @@ import uuid
 from ..config.logging import Component, get_logger
 from ..db import get_pool
 from ..db.checkpointer import get_checkpointer
+from ..db.incidents import transition_incident_state
 from ..db.policy_gate import persist_dry_run_result, persist_policy_decision
 from ..db.remediation import load_immutable_artifact, persist_remediation_plan
 from ..db.remediation_skeptic import persist_remediation_skeptic_record
@@ -94,9 +95,6 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
                     await _persist_skeptic_artifacts(
                         conn, incident_id, final_state
                     )
-                    await _persist_policy_artifacts(
-                        conn, incident_id, final_state
-                    )
                     if final_state.get("skeptic_verdict"):
                         verdict = final_state["skeptic_verdict"]
                         await pipeline_audit_log(
@@ -115,9 +113,13 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
                             },
                             conn=conn,
                         )
-                    await _handle_policy_decision(
+                    transition_applied = await _handle_policy_decision(
                         conn, incident_id, final_state
                     )
+                    if transition_applied:
+                        await _persist_policy_artifacts(
+                            conn, incident_id, final_state
+                        )
         except Exception:
             if final_state.get("skeptic_verdict"):
                 await _emit_remediation_event(
@@ -138,26 +140,32 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
             )
         await _emit_remediation_event(incident_id, "remediation_plan", "planned")
 
-        if final_state.get("dry_run_result"):
-            dr = DryRunResult.model_validate(final_state["dry_run_result"])
-            await _emit_remediation_event(
-                incident_id, "dry_run", "complete",
-                payload={"overall_passed": dr.overall_passed},
+        if not transition_applied:
+            logger.warning(
+                "Skipping policy events — state transition was not applied",
+                extra={"incident_id": str(incident_id)},
             )
+        else:
+            if final_state.get("dry_run_result"):
+                dr = DryRunResult.model_validate(final_state["dry_run_result"])
+                await _emit_remediation_event(
+                    incident_id, "dry_run", "complete",
+                    payload={"dry_run_passed": dr.dry_run_passed},
+                )
 
-        decision_dict = final_state.get("policy_decision")
-        if decision_dict:
-            decision = PolicyDecision.model_validate(decision_dict)
-            if decision.auto_execution_approved:
-                await _emit_remediation_event(
-                    incident_id, "policy_gate", "approved",
-                    payload={"reasoning": decision.reasoning},
-                )
-            else:
-                await _emit_remediation_event(
-                    incident_id, "policy_gate", "denied",
-                    payload={"reasoning": decision.reasoning},
-                )
+            decision_dict = final_state.get("policy_decision")
+            if decision_dict:
+                decision = PolicyDecision.model_validate(decision_dict)
+                if decision.auto_execution_approved:
+                    await _emit_remediation_event(
+                        incident_id, "policy_gate", "approved",
+                        payload={"reasoning": decision.reasoning},
+                    )
+                else:
+                    await _emit_remediation_event(
+                        incident_id, "policy_gate", "denied",
+                        payload={"reasoning": decision.reasoning},
+                    )
 
         logger.info(
             "Remediation pipeline completed successfully",
@@ -212,21 +220,9 @@ async def _transition_to_failed(incident_id: uuid.UUID) -> None:
     try:
         pool = await get_pool()
         async with pool.acquire() as conn:
-            current_val = await conn.fetchval(
-                "SELECT state FROM incidents WHERE id = $1", incident_id
-            )
-            if current_val is None:
-                return
-            current = IncidentState(current_val)
-            new_state = transition(current, IncidentState.FAILED)
-            await conn.execute(
-                "UPDATE incidents SET state = $2, updated_at = NOW() WHERE id = $1",
-                incident_id,
-                new_state.value,
-            )
-            logger.info(
-                "Incident transitioned to failed after remediation failure",
-                extra={"incident_id": str(incident_id)},
+            await transition_incident_state(
+                conn, incident_id,
+                IncidentState.PLANNING.value, IncidentState.FAILED.value,
             )
     except Exception:
         logger.warning(
@@ -256,48 +252,38 @@ async def _handle_policy_decision(
     conn,
     incident_id: uuid.UUID,
     graph_output: dict,
-) -> None:
-    """Transition incident state based on policy gate decision (AD-19)."""
+) -> bool:
+    """Transition incident state based on policy gate decision (AD-19).
+
+    Only transitions from the 'planning' state — which is the state this
+    pipeline stage owns. Returns True if the transition was applied, False
+    if the incident was no longer in 'planning' (concurrent modification).
+    """
     decision_dict = graph_output.get("policy_decision")
     if decision_dict is None:
-        return
+        return True
 
     decision = PolicyDecision.model_validate(decision_dict)
 
-    current_val = await conn.fetchval(
-        "SELECT state FROM incidents WHERE id = $1", incident_id
-    )
-    if current_val is None:
-        logger.warning(
-            "Incident not found for policy decision",
-            extra={"incident_id": str(incident_id)},
-        )
-        return
-    current = IncidentState(current_val)
-
     if decision.auto_execution_approved:
-        new_state = transition(current, IncidentState.EXECUTING)
+        new_state = transition(IncidentState.PLANNING, IncidentState.EXECUTING)
     else:
-        new_state = transition(current, IncidentState.AWAITING_APPROVAL)
+        new_state = transition(IncidentState.PLANNING, IncidentState.AWAITING_APPROVAL)
 
-    result = await conn.execute(
-        "UPDATE incidents SET state = $1, updated_at = NOW() "
-        "WHERE id = $2 AND state = $3",
-        new_state.value,
-        incident_id,
-        current_val,
+    applied = await transition_incident_state(
+        conn, incident_id, IncidentState.PLANNING.value, new_state.value
     )
 
-    if result == "UPDATE 0":
+    if not applied:
         logger.warning(
             "Policy decision state transition failed — concurrent modification",
             extra={
                 "incident_id": str(incident_id),
-                "expected_state": current_val,
+                "expected_state": IncidentState.PLANNING.value,
                 "target_state": new_state.value,
             },
         )
-        return
+        return False
 
     from ..db.audit import write_audit_log
 
@@ -320,6 +306,7 @@ async def _handle_policy_decision(
             "auto_approved": decision.auto_execution_approved,
         },
     )
+    return True
 
 
 async def _emit_remediation_event(

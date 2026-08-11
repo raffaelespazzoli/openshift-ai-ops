@@ -45,15 +45,18 @@ async def run_dry_run_preflight(
         step_results.append(result)
 
     overall = all(r.success for r in step_results)
+    errors = [
+        r.error_detail or r.message
+        for r in step_results
+        if not r.success
+    ]
 
     return DryRunResult(
         incident_id=plan.incident_id,
         plan_id=plan.id,
         step_results=step_results,
-        rbac_check_passed=overall,
-        quota_check_passed=overall,
-        admission_check_passed=overall,
-        overall_passed=overall,
+        dry_run_passed=overall,
+        dry_run_errors=errors,
     )
 
 

@@ -83,10 +83,8 @@ class TestDryRunAllPass:
 
         result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
 
-        assert result.overall_passed is True
-        assert result.rbac_check_passed is True
-        assert result.quota_check_passed is True
-        assert result.admission_check_passed is True
+        assert result.dry_run_passed is True
+        assert result.dry_run_errors == []
         assert len(result.step_results) == 1
         assert result.step_results[0].success is True
 
@@ -111,7 +109,8 @@ class TestDryRunAllPass:
 
         result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
 
-        assert result.overall_passed is True
+        assert result.dry_run_passed is True
+        assert result.dry_run_errors == []
         assert len(result.step_results) == 3
         assert all(s.success for s in result.step_results)
 
@@ -154,7 +153,8 @@ class TestDryRunPartialFail:
 
         result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
 
-        assert result.overall_passed is False
+        assert result.dry_run_passed is False
+        assert len(result.dry_run_errors) >= 1
         assert result.step_results[0].success is False
         assert result.step_results[0].error_detail is not None
 
@@ -173,8 +173,8 @@ class TestDryRunRBACDenied:
 
         result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
 
-        assert result.rbac_check_passed is False
-        assert result.overall_passed is False
+        assert result.dry_run_passed is False
+        assert len(result.dry_run_errors) >= 1
 
 
 class TestDryRunQuotaViaServerDryRun:
@@ -189,7 +189,8 @@ class TestDryRunQuotaViaServerDryRun:
 
         result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
 
-        assert result.quota_check_passed is True
+        assert result.dry_run_passed is True
+        assert result.dry_run_errors == []
 
 
 class TestDryRunInformationalSteps:
@@ -221,7 +222,8 @@ class TestDryRunInformationalSteps:
 
         result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
 
-        assert result.overall_passed is True
+        assert result.dry_run_passed is True
+        assert result.dry_run_errors == []
         assert len(result.step_results) == 2
         assert result.step_results[0].command == "(no command)"
         assert result.step_results[0].success is True

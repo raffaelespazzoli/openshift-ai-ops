@@ -55,13 +55,13 @@ async def evaluate_policy_gate(
     auto_approved = (
         evidence_gaps_empty
         and evidence_complete
-        and dry_run.overall_passed
+        and dry_run.dry_run_passed
         and all_dimensions_pass
     )
 
     reasoning = _build_reasoning(
         auto_approved, dimensions, evidence_gaps_empty,
-        evidence_complete, dry_run.overall_passed,
+        evidence_complete, dry_run.dry_run_passed,
     )
 
     return PolicyDecision(

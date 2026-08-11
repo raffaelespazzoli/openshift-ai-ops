@@ -31,10 +31,8 @@ class DryRunResult(BaseModel):
     incident_id: uuid.UUID
     plan_id: uuid.UUID
     step_results: list[DryRunStepResult]
-    rbac_check_passed: bool
-    quota_check_passed: bool
-    admission_check_passed: bool
-    overall_passed: bool
+    dry_run_passed: bool
+    dry_run_errors: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

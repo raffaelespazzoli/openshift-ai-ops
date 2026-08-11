@@ -54,12 +54,11 @@ class TestDryRunResult:
                     step_order=1, command="cmd", success=True, message="ok"
                 ),
             ],
-            rbac_check_passed=True,
-            quota_check_passed=True,
-            admission_check_passed=True,
-            overall_passed=True,
+            dry_run_passed=True,
+            dry_run_errors=[],
         )
-        assert result.overall_passed is True
+        assert result.dry_run_passed is True
+        assert result.dry_run_errors == []
         assert result.id is not None
         assert result.created_at is not None
 
@@ -73,15 +72,14 @@ class TestDryRunResult:
                     step_order=1, command="cmd", success=False, message="fail"
                 ),
             ],
-            rbac_check_passed=True,
-            quota_check_passed=True,
-            admission_check_passed=False,
-            overall_passed=False,
+            dry_run_passed=False,
+            dry_run_errors=["admission webhook denied"],
         )
-        assert result.overall_passed is False
+        assert result.dry_run_passed is False
+        assert len(result.dry_run_errors) == 1
 
     @pytest.mark.unit
-    def test_overall_reflects_rbac_failure(self):
+    def test_dry_run_errors_captures_failures(self):
         result = DryRunResult(
             incident_id=uuid.uuid4(),
             plan_id=uuid.uuid4(),
@@ -90,13 +88,11 @@ class TestDryRunResult:
                     step_order=1, command="cmd", success=True, message="ok"
                 ),
             ],
-            rbac_check_passed=False,
-            quota_check_passed=True,
-            admission_check_passed=True,
-            overall_passed=False,
+            dry_run_passed=False,
+            dry_run_errors=["RBAC denied", "quota exceeded"],
         )
-        assert result.rbac_check_passed is False
-        assert result.overall_passed is False
+        assert result.dry_run_passed is False
+        assert "RBAC denied" in result.dry_run_errors
 
     @pytest.mark.unit
     def test_serialization_roundtrip(self):
@@ -108,15 +104,13 @@ class TestDryRunResult:
                     step_order=1, command="cmd", success=True, message="ok"
                 ),
             ],
-            rbac_check_passed=True,
-            quota_check_passed=True,
-            admission_check_passed=True,
-            overall_passed=True,
+            dry_run_passed=True,
+            dry_run_errors=[],
         )
         data = result.model_dump(mode="json")
         restored = DryRunResult.model_validate(data)
         assert restored.id == result.id
-        assert restored.overall_passed is True
+        assert restored.dry_run_passed is True
         assert len(restored.step_results) == 1
 
 

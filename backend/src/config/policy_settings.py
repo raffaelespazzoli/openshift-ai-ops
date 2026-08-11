@@ -8,7 +8,8 @@ human approval unless explicitly relaxed.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+
+from pydantic import BaseModel, Field, field_validator
 
 
 def _parse_list(raw: str) -> list[str]:
@@ -16,16 +17,29 @@ def _parse_list(raw: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
-@dataclass(frozen=True)
-class PolicyMatrixSettings:
+class PolicyMatrixSettings(BaseModel):
     """Policy gate configuration — default is deny-all (human approval required)."""
 
-    severity_auto_approve: list[str] = field(default_factory=list)
-    blast_radius_auto_approve: list[str] = field(default_factory=list)
-    confidence_minimum: float = 1.0
+    model_config = {"frozen": True}
+
+    severity_auto_approve: list[str] = Field(default_factory=list)
+    blast_radius_auto_approve: list[str] = Field(default_factory=list)
+    confidence_minimum: float = Field(default=1.0, ge=0.0, le=1.0)
+
+    @field_validator("confidence_minimum", mode="before")
+    @classmethod
+    def _coerce_confidence(cls, v):
+        try:
+            return float(v)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"POLICY_CONFIDENCE_MINIMUM must be a numeric value between "
+                f"0.0 and 1.0, got: {v!r}"
+            ) from exc
 
     @classmethod
     def from_env(cls) -> PolicyMatrixSettings:
+        raw_confidence = os.environ.get("POLICY_CONFIDENCE_MINIMUM", "1.0")
         return cls(
             severity_auto_approve=_parse_list(
                 os.environ.get("POLICY_SEVERITY_AUTO_APPROVE", "")
@@ -33,9 +47,7 @@ class PolicyMatrixSettings:
             blast_radius_auto_approve=_parse_list(
                 os.environ.get("POLICY_BLAST_RADIUS_AUTO_APPROVE", "")
             ),
-            confidence_minimum=float(
-                os.environ.get("POLICY_CONFIDENCE_MINIMUM", "1.0")
-            ),
+            confidence_minimum=raw_confidence,
         )
 
 
