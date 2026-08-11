@@ -215,6 +215,17 @@ async def approve_remediation(
                     status_code=409, content=error.model_dump(mode="json")
                 )
 
+            plan_id = row["plan_id"]
+            if plan_id is None:
+                error = ApiError(
+                    error="No remediation plan found for this incident",
+                    code=ERROR_CONFLICT,
+                    detail={"incident_id": str(incident_id)},
+                )
+                return JSONResponse(
+                    status_code=409, content=error.model_dump(mode="json")
+                )
+
             blast_radius = row["blast_radius"]
             elapsed, remaining = _review_time_elapsed(
                 row["updated_at"], blast_radius, settings
@@ -241,7 +252,6 @@ async def approve_remediation(
                 incident_id,
             )
 
-            plan_id = row["plan_id"]
             await persist_approval_record(
                 conn,
                 incident_id=incident_id,
@@ -335,6 +345,17 @@ async def reject_remediation(
                     status_code=409, content=error.model_dump(mode="json")
                 )
 
+            plan_id = row["plan_id"]
+            if plan_id is None:
+                error = ApiError(
+                    error="No remediation plan found for this incident",
+                    code=ERROR_CONFLICT,
+                    detail={"incident_id": str(incident_id)},
+                )
+                return JSONResponse(
+                    status_code=409, content=error.model_dump(mode="json")
+                )
+
             new_state = transition(
                 IncidentState.AWAITING_APPROVAL, IncidentState.FAILED
             )
@@ -344,7 +365,6 @@ async def reject_remediation(
                 incident_id,
             )
 
-            plan_id = row["plan_id"]
             await persist_approval_record(
                 conn,
                 incident_id=incident_id,

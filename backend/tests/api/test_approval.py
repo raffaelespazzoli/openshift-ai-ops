@@ -248,8 +248,21 @@ class TestPolicyAdjust:
             json={
                 "severity": "warning",
                 "blast_radius": "workload",
-                "confidence": 0.85,
+                "confidence_minimum": 0.85,
                 "new_auto_approve": True,
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data"]["status"] == "adjusted"
+
+    async def test_adjust_without_confidence_minimum(self, async_client, run_migrations):
+        resp = await async_client.post(
+            "/api/v1/policy/adjust",
+            json={
+                "severity": "critical",
+                "blast_radius": "node",
+                "new_auto_approve": False,
             },
         )
         assert resp.status_code == 200
@@ -262,7 +275,7 @@ class TestPolicyAdjust:
             json={
                 "severity": "critical",
                 "blast_radius": "cluster",
-                "confidence": 0.95,
+                "confidence_minimum": 0.95,
                 "new_auto_approve": False,
             },
         )
@@ -278,6 +291,63 @@ class TestPolicyAdjust:
             assert row["target_resource"] == "policy_matrix"
         finally:
             await conn.close()
+
+
+async def _seed_incident_no_plan(db_url, *, state="awaiting_approval"):
+    """Insert an incident with NO remediation plan (orphaned)."""
+    conn = await asyncpg.connect(db_url)
+    try:
+        incident_id = uuid.uuid4()
+        now = datetime.now(timezone.utc)
+        await conn.execute(
+            "INSERT INTO incidents (id, state, severity, created_at, updated_at) VALUES ($1, $2, 'critical', $3, $4)",
+            incident_id, state, now, now,
+        )
+        return incident_id
+    finally:
+        await conn.close()
+
+
+async def _cleanup_no_plan(db_url, incident_id):
+    conn = await asyncpg.connect(db_url)
+    try:
+        await conn.execute("DELETE FROM incidents WHERE id = $1", incident_id)
+    finally:
+        await conn.close()
+
+
+@pytest.fixture
+async def orphan_incident(db_url, run_migrations):
+    incident_id = await _seed_incident_no_plan(db_url)
+    yield incident_id
+    await _cleanup_no_plan(db_url, incident_id)
+
+
+class TestMissingPlanGuard:
+    """Verify 409 when an incident has no remediation plan."""
+
+    async def test_approve_missing_plan_returns_409(
+        self, async_client, orphan_incident
+    ):
+        incident_id = orphan_incident
+        resp = await async_client.post(f"/api/v1/incidents/{incident_id}/approve")
+        assert resp.status_code == 409
+        body = resp.json()
+        assert body["code"] == "CONFLICT"
+        assert "No remediation plan" in body["error"]
+
+    async def test_reject_missing_plan_returns_409(
+        self, async_client, orphan_incident
+    ):
+        incident_id = orphan_incident
+        resp = await async_client.post(
+            f"/api/v1/incidents/{incident_id}/reject",
+            json={"reason": "Testing missing plan"},
+        )
+        assert resp.status_code == 409
+        body = resp.json()
+        assert body["code"] == "CONFLICT"
+        assert "No remediation plan" in body["error"]
 
 
 class TestApproveRejectFullFlow:

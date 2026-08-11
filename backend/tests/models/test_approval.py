@@ -144,11 +144,24 @@ class TestPolicyAdjustmentRequest:
         req = PolicyAdjustmentRequest(
             severity="warning",
             blast_radius="workload",
-            confidence=0.85,
+            confidence_minimum=0.85,
             new_auto_approve=True,
         )
         assert req.severity == "warning"
+        assert req.blast_radius == "workload"
+        assert req.confidence_minimum == 0.85
         assert req.new_auto_approve is True
+
+    @pytest.mark.unit
+    def test_confidence_minimum_optional(self):
+        req = PolicyAdjustmentRequest(
+            severity="critical",
+            blast_radius="node",
+            new_auto_approve=False,
+        )
+        assert req.confidence_minimum is None
+        assert req.severity == "critical"
+        assert req.blast_radius == "node"
 
     @pytest.mark.unit
     def test_confidence_out_of_range(self):
@@ -156,7 +169,7 @@ class TestPolicyAdjustmentRequest:
             PolicyAdjustmentRequest(
                 severity="warning",
                 blast_radius="workload",
-                confidence=1.5,
+                confidence_minimum=1.5,
                 new_auto_approve=True,
             )
 
@@ -166,7 +179,7 @@ class TestPolicyAdjustmentRequest:
             PolicyAdjustmentRequest(
                 severity="warning",
                 blast_radius="workload",
-                confidence=-0.1,
+                confidence_minimum=-0.1,
                 new_auto_approve=True,
             )
 

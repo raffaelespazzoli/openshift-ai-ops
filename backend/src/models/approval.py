@@ -63,5 +63,5 @@ class PolicyAdjustmentRequest(BaseModel):
 
     severity: str
     blast_radius: str
-    confidence: float = Field(ge=0.0, le=1.0)
+    confidence_minimum: float | None = Field(default=None, ge=0.0, le=1.0)
     new_auto_approve: bool

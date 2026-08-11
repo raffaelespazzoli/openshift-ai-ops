@@ -197,13 +197,14 @@ async def persist_policy_adjustment(
     record_id = uuid.uuid4()
     await conn.execute(
         """
-        INSERT INTO policy_adjustments (id, severity, blast_radius, confidence, new_auto_approve, actor)
+        INSERT INTO policy_adjustments
+            (id, severity, blast_radius, confidence_minimum, new_auto_approve, actor)
         VALUES ($1, $2, $3, $4, $5, $6)
         """,
         record_id,
         body.severity,
         body.blast_radius,
-        body.confidence,
+        body.confidence_minimum,
         body.new_auto_approve,
         actor,
     )

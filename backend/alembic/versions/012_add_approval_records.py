@@ -40,7 +40,7 @@ def upgrade() -> None:
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             severity TEXT NOT NULL,
             blast_radius TEXT NOT NULL,
-            confidence DOUBLE PRECISION NOT NULL,
+            confidence_minimum DOUBLE PRECISION,
             new_auto_approve BOOLEAN NOT NULL,
             actor TEXT NOT NULL,
             created_at TIMESTAMPTZ DEFAULT NOW()
