@@ -1,8 +1,9 @@
-"""Remediation pipeline runner (AD-1, Story 3.1).
+"""Remediation pipeline runner (AD-1, Story 3.1/3.2).
 
 Bridges the dispatcher to the remediation LangGraph graph.
 Loads the sealed ImmutableDiagnosisArtifact from the database,
-invokes the remediation graph, and persists the resulting plan.
+invokes the remediation graph, and persists the resulting plan
+and skeptic artifacts.
 
 On failure the runner transitions the incident to ``failed`` so it
 does not get stranded in ``planning``.  The success-path exit
@@ -18,6 +19,7 @@ from ..config.logging import Component, get_logger
 from ..db import get_pool
 from ..db.checkpointer import get_checkpointer
 from ..db.remediation import load_immutable_artifact, persist_remediation_plan
+from ..db.remediation_skeptic import persist_remediation_skeptic_record
 from ..models.events import EventNames, SSEEventData
 from ..models.remediation import RemediationPlan
 from ..models.state_machine import IncidentState, transition
@@ -58,11 +60,18 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
             "incident_id": str(incident_id),
             "immutable_artifact": artifact.model_dump(mode="json"),
             "remediation_plan": None,
+            "skeptic_challenge": None,
+            "skeptic_verdict": None,
             "stage": "entered",
         }
 
         thread_id = f"remediation-{incident_id}"
         config = {"configurable": {"thread_id": thread_id}}
+
+        await _emit_remediation_event(
+            incident_id, "skeptic_validation", "validating"
+        )
+
         final_state = await graph.ainvoke(initial_state, config=config)
 
         plan_dict = final_state.get("remediation_plan")
@@ -79,7 +88,13 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
 
         async with pool.acquire() as conn:
             await persist_remediation_plan(conn, plan)
+            await _persist_skeptic_artifacts(
+                conn, incident_id, final_state
+            )
 
+        await _emit_remediation_event(
+            incident_id, "skeptic_validation", "validated"
+        )
         await _emit_remediation_event(incident_id, "remediation_plan", "planned")
 
         logger.info(
@@ -101,6 +116,32 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
         await _transition_to_failed(incident_id)
         await _emit_remediation_event(incident_id, "remediation_plan", "failed")
         return None
+
+
+async def _persist_skeptic_artifacts(
+    conn,
+    incident_id: uuid.UUID,
+    final_state: dict,
+) -> None:
+    """Persist remediation skeptic challenge/response records from graph state."""
+    verdict_dict = final_state.get("skeptic_verdict")
+    if not verdict_dict:
+        return
+
+    challenge_history = verdict_dict.get("challenge_history", [])
+    for entry in challenge_history:
+        round_number = entry.get("round", 1)
+        challenge = entry.get("challenge", {})
+        response = entry.get("response", {})
+        is_final = round_number == len(challenge_history)
+        await persist_remediation_skeptic_record(
+            conn,
+            incident_id=incident_id,
+            round_number=round_number,
+            challenge=challenge,
+            response=response,
+            verdict=verdict_dict if is_final else None,
+        )
 
 
 async def _transition_to_failed(incident_id: uuid.UUID) -> None:

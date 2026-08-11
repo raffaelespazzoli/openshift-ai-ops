@@ -8,6 +8,7 @@ cluster state when designing fix steps.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from langchain_core.messages import HumanMessage
@@ -18,9 +19,14 @@ from ..config.llm_settings import AgentRole
 from ..config.logging import Component, get_logger
 from ..models.diagnosis import ImmutableDiagnosisArtifact
 from ..models.remediation import RemediationPlan
+from ..models.remediation_skeptic import RemediationSkepticChallenge
 from ..pipeline.mcp_readwrite_client import ReadWriteMCPClient
 from .llm_client import get_chat_model
-from .prompts import PLANNER_STRUCTURED_PROMPT, PLANNER_SYSTEM_PROMPT
+from .prompts import (
+    PLANNER_REBUTTAL_PROMPT_TEMPLATE,
+    PLANNER_STRUCTURED_PROMPT,
+    PLANNER_SYSTEM_PROMPT,
+)
 
 logger = get_logger(Component.AGENT)
 
@@ -260,3 +266,66 @@ async def run_planner(artifact: ImmutableDiagnosisArtifact) -> RemediationPlan:
     )
 
     return plan
+
+
+async def run_planner_rebuttal(
+    plan: RemediationPlan,
+    challenge: RemediationSkepticChallenge,
+    artifact: ImmutableDiagnosisArtifact,
+) -> RemediationPlan:
+    """Run the planner in rebuttal mode to address skeptic challenges.
+
+    The planner can query the cluster again to verify/refine the plan.
+    Returns a potentially revised RemediationPlan.
+
+    Args:
+        plan: The current RemediationPlan being challenged.
+        challenge: The RemediationSkepticChallenge to address.
+        artifact: The sealed diagnosis artifact (read-only context).
+
+    Returns:
+        A potentially revised RemediationPlan.
+    """
+    incident_id = str(plan.incident_id)
+    logger.info(
+        "Planner starting rebuttal",
+        extra={"incident_id": incident_id},
+    )
+
+    agent = build_planner_agent()
+
+    prompt = PLANNER_REBUTTAL_PROMPT_TEMPLATE.format(
+        plan_json=plan.model_dump_json(indent=2),
+        step_correctness_issues=json.dumps(challenge.step_correctness_issues),
+        blast_radius_assessment=challenge.blast_radius_assessment,
+        rollback_feasibility_issues=json.dumps(
+            challenge.rollback_feasibility_issues
+        ),
+        precondition_gaps=json.dumps(challenge.precondition_gaps),
+        risk_assessment_critique=challenge.risk_assessment_critique,
+        overall_verdict=challenge.overall_verdict,
+        artifact_json=json.dumps(
+            artifact.model_dump(mode="json"), indent=2, default=str
+        ),
+    )
+
+    result = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]})
+    revised_plan: RemediationPlan = result["structured_response"]
+    revised_plan = revised_plan.model_copy(
+        update={
+            "incident_id": plan.incident_id,
+            "diagnosis_id": plan.diagnosis_id,
+        }
+    )
+
+    logger.info(
+        "Planner rebuttal completed",
+        extra={
+            "incident_id": incident_id,
+            "step_count": len(revised_plan.steps),
+            "blast_radius": revised_plan.blast_radius.value,
+            "risk_level": revised_plan.estimated_risk.value,
+        },
+    )
+
+    return revised_plan

@@ -18,6 +18,7 @@ from src.agents.planner import (
     build_planning_prompt,
     get_planner_tools,
     run_planner,
+    run_planner_rebuttal,
     set_rw_mcp_client,
 )
 from src.models.diagnosis import (
@@ -33,6 +34,7 @@ from src.models.remediation import (
     RemediationStep,
     RiskLevel,
 )
+from src.models.remediation_skeptic import RemediationSkepticChallenge
 from tests.agents.conftest import FakeChatModel
 
 
@@ -277,3 +279,87 @@ class TestRunPlanner:
         messages = call_args[0][0]["messages"]
         assert len(messages) == 1
         assert "workload/crash-loop-backoff" in messages[0].content
+
+
+def _make_challenge() -> RemediationSkepticChallenge:
+    """Create a valid RemediationSkepticChallenge for rebuttal tests."""
+    return RemediationSkepticChallenge(
+        step_correctness_issues=["Step 1 uses wrong resource target"],
+        blast_radius_assessment="Blast radius appears under-estimated",
+        rollback_feasibility_issues=["Rollback step missing for quota change"],
+        precondition_gaps=["Missing RBAC check for namespace edit"],
+        risk_assessment_critique="Risk should be medium, not low",
+        overall_verdict="Plan needs revision for safety",
+    )
+
+
+class TestRunPlannerRebuttal:
+    """run_planner_rebuttal produces a revised RemediationPlan with mocked agent."""
+
+    @pytest.mark.unit
+    async def test_rebuttal_produces_valid_plan(self):
+        artifact = _make_artifact()
+        plan = _make_plan(
+            incident_id=artifact.incident_id, diagnosis_id=artifact.id
+        )
+        challenge = _make_challenge()
+
+        revised = _make_plan(
+            incident_id=artifact.incident_id, diagnosis_id=artifact.id
+        )
+        mock_agent = AsyncMock()
+        mock_agent.ainvoke.return_value = {"structured_response": revised}
+
+        with patch(
+            "src.agents.planner.build_planner_agent", return_value=mock_agent
+        ):
+            result = await run_planner_rebuttal(plan, challenge, artifact)
+
+        assert isinstance(result, RemediationPlan)
+        assert result.incident_id == plan.incident_id
+        assert result.diagnosis_id == plan.diagnosis_id
+
+    @pytest.mark.unit
+    async def test_rebuttal_preserves_incident_ids(self):
+        iid = uuid.uuid4()
+        did = uuid.uuid4()
+        artifact = _make_artifact(incident_id=iid, diagnosis_id=did)
+        plan = _make_plan(incident_id=iid, diagnosis_id=did)
+        challenge = _make_challenge()
+
+        raw_revised = _make_plan()
+        mock_agent = AsyncMock()
+        mock_agent.ainvoke.return_value = {"structured_response": raw_revised}
+
+        with patch(
+            "src.agents.planner.build_planner_agent", return_value=mock_agent
+        ):
+            result = await run_planner_rebuttal(plan, challenge, artifact)
+
+        assert result.incident_id == iid
+        assert result.diagnosis_id == did
+
+    @pytest.mark.unit
+    async def test_rebuttal_prompt_contains_challenge_info(self):
+        artifact = _make_artifact()
+        plan = _make_plan(
+            incident_id=artifact.incident_id, diagnosis_id=artifact.id
+        )
+        challenge = _make_challenge()
+
+        revised = _make_plan(
+            incident_id=artifact.incident_id, diagnosis_id=artifact.id
+        )
+        mock_agent = AsyncMock()
+        mock_agent.ainvoke.return_value = {"structured_response": revised}
+
+        with patch(
+            "src.agents.planner.build_planner_agent", return_value=mock_agent
+        ):
+            await run_planner_rebuttal(plan, challenge, artifact)
+
+        call_args = mock_agent.ainvoke.call_args
+        messages = call_args[0][0]["messages"]
+        prompt_content = messages[0].content
+        assert "Step 1 uses wrong resource target" in prompt_content
+        assert "under-estimated" in prompt_content

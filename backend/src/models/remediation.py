@@ -8,6 +8,8 @@ must be satisfied before execution.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -66,3 +68,20 @@ class RemediationPlan(BaseModel):
     preconditions: list[Precondition] = Field(default_factory=list)
     plan_summary: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def plan_hash(self) -> str:
+        """Deterministic hash of plan content for skeptic comparison.
+
+        Hashes: steps, blast_radius, rollback_plan, preconditions, estimated_risk.
+        Excludes: id, incident_id, diagnosis_id, plan_summary, created_at
+        (these are metadata, not plan substance).
+        """
+        content = {
+            "steps": [s.model_dump(mode="json") for s in self.steps],
+            "blast_radius": self.blast_radius.value,
+            "rollback_plan": [s.model_dump(mode="json") for s in self.rollback_plan],
+            "preconditions": [p.model_dump(mode="json") for p in self.preconditions],
+            "estimated_risk": self.estimated_risk.value,
+        }
+        serialized = json.dumps(content, sort_keys=True, default=str)
+        return hashlib.sha256(serialized.encode()).hexdigest()
