@@ -38,6 +38,7 @@ class EventNames:
     INCIDENT_STAGE_CHANGED = "incident.stage_changed"
     INCIDENT_STATE_CHANGED = "incident.state_changed"
     INCIDENT_RESOLVED = "incident.resolved"
+    INCIDENT_APPROVAL_DECISION = "incident.approval_decision"
 
 
 class EventBus(Protocol):

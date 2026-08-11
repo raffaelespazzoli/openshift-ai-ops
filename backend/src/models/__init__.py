@@ -6,6 +6,7 @@ All other modules import from here.
 
 from .alert import Alert, AlertStatus
 from .api import (
+    ERROR_CONFLICT,
     ERROR_INTERNAL,
     ERROR_NOT_FOUND,
     ERROR_UNAUTHORIZED,
@@ -13,6 +14,12 @@ from .api import (
     ApiError,
     ApiMeta,
     ApiResponse,
+)
+from .approval import (
+    ApprovalContext,
+    ApprovalRecord,
+    PolicyAdjustmentRequest,
+    RejectionRequest,
 )
 from .diagnosis import (
     ROOT_CAUSE_TAXONOMY,
@@ -59,6 +66,8 @@ __all__ = [
     "AlertManagerAlert",
     "AlertManagerWebhook",
     "AlertStatus",
+    "ApprovalContext",
+    "ApprovalRecord",
     "ApiError",
     "BlastRadius",
     "ApiMeta",
@@ -71,6 +80,7 @@ __all__ = [
     "DryRunResult",
     "DryRunStepResult",
     "DiagnosisObject",
+    "ERROR_CONFLICT",
     "ERROR_INTERNAL",
     "ERROR_NOT_FOUND",
     "ERROR_UNAUTHORIZED",
@@ -87,8 +97,10 @@ __all__ = [
     "PolicyDecision",
     "PolicyDimension",
     "PolicyMatrix",
+    "PolicyAdjustmentRequest",
     "Precondition",
     "RemediationPlan",
+    "RejectionRequest",
     "RemediationSkepticChallenge",
     "RemediationSkepticVerdict",
     "RemediationStep",

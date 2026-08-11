@@ -109,6 +109,11 @@ llm:
     name: openshift-ai-ops-llm
     key: api-key
 
+approval:
+  minimumReviewEnabled: true
+  minimumReviewSecondsNode: 60
+  minimumReviewSecondsCluster: 60
+
 policyGate:
   severityAutoApprove: ""
   blastRadiusAutoApprove: ""

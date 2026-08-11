@@ -19,6 +19,7 @@ from ..db.checkpointer import close_checkpointer, setup_checkpointer
 from ..models.api import ERROR_INTERNAL, ERROR_NOT_FOUND, ERROR_VALIDATION, ApiError
 from ..pipeline.correlator import seal_expired_groups
 from ..pipeline.dispatcher import run_dispatcher, shutdown_pipeline_tasks
+from .approval import router as approval_router
 from .audit import AuditMiddleware
 from .auth import AuthenticationError, handle_authentication_error
 from .event_bus import get_event_bus
@@ -246,6 +247,7 @@ def create_app() -> FastAPI:
     app.include_router(webhooks_router)
     app.include_router(incidents_router)
     app.include_router(events_router)
+    app.include_router(approval_router)
 
     return app
 
