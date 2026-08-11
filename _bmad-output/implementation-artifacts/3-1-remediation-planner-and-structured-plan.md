@@ -4,7 +4,7 @@ baseline_commit: eb73c0243fb26dfcd321fccc846d2665840afa2f
 
 # Story 3.1: Remediation Planner & Structured Plan
 
-Status: in-progress
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
