@@ -192,7 +192,7 @@ class TestPersistPolicyAdjustment:
         body = PolicyAdjustmentRequest(
             severity="warning",
             blast_radius="workload",
-            confidence=0.85,
+            confidence_minimum=0.85,
             new_auto_approve=True,
         )
         record_id = await persist_policy_adjustment(db_conn, body, actor="sre-admin")
@@ -203,5 +203,6 @@ class TestPersistPolicyAdjustment:
         )
         assert row["severity"] == "warning"
         assert row["blast_radius"] == "workload"
+        assert row["confidence_minimum"] == 0.85
         assert row["actor"] == "sre-admin"
         assert row["new_auto_approve"] is True

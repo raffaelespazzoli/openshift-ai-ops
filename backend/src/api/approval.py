@@ -128,6 +128,17 @@ async def get_approval_context_endpoint(
         )
         return JSONResponse(status_code=404, content=error.model_dump(mode="json"))
 
+    if (
+        ctx_data.get("state") == IncidentState.AWAITING_APPROVAL.value
+        and not ctx_data.get("remediation_plan")
+    ):
+        error = ApiError(
+            error="Approval context incomplete: no remediation plan found",
+            code="INTERNAL_ERROR",
+            detail={"incident_id": str(incident_id)},
+        )
+        return JSONResponse(status_code=500, content=error.model_dump(mode="json"))
+
     settings = get_approval_settings()
     blast_radius = ctx_data.get("blast_radius")
     min_review = _get_minimum_review_seconds(blast_radius, settings)
@@ -260,14 +271,6 @@ async def approve_remediation(
                 actor=user.username,
             )
 
-            await write_audit_log(
-                conn,
-                actor=user.username,
-                action="api.remediation.approved",
-                target_resource=str(incident_id),
-                detail={"plan_id": str(plan_id)},
-            )
-
     bus = get_event_bus()
     await bus.emit(
         EventNames.INCIDENT_STATE_CHANGED,
@@ -372,14 +375,6 @@ async def reject_remediation(
                 action="rejected",
                 actor=user.username,
                 reason=body.reason,
-            )
-
-            await write_audit_log(
-                conn,
-                actor=user.username,
-                action="api.remediation.rejected",
-                target_resource=str(incident_id),
-                detail={"plan_id": str(plan_id), "reason": body.reason},
             )
 
     bus = get_event_bus()

@@ -10,7 +10,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from .incident import Severity
+from .remediation import BlastRadius
 
 
 ApprovalAction = Literal["approved", "rejected"]
@@ -61,7 +64,14 @@ class ApprovalContext(BaseModel):
 class PolicyAdjustmentRequest(BaseModel):
     """Request body for adjusting policy gate thresholds."""
 
-    severity: str
-    blast_radius: str
+    model_config = ConfigDict(extra="forbid")
+
+    severity: Literal[Severity.CRITICAL, Severity.WARNING, Severity.INFO]
+    blast_radius: Literal[
+        BlastRadius.WORKLOAD,
+        BlastRadius.NAMESPACE,
+        BlastRadius.NODE,
+        BlastRadius.CLUSTER,
+    ]
     confidence_minimum: float | None = Field(default=None, ge=0.0, le=1.0)
     new_auto_approve: bool
