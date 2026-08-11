@@ -134,21 +134,17 @@ async def trigger_rollback(
             mcp_client = ReadWriteMCPClient()
             rollback_steps = await _execute_rollback(plan.rollback_plan, mcp_client)
 
-            await release_remediation_lock(lock_conn)
+            record = RollbackRecord(
+                incident_id=incident_id,
+                plan_id=plan_id,
+                actor=user.username,
+                steps_executed=rollback_steps,
+                success=all(s.success for s in rollback_steps),
+            )
 
-    record = RollbackRecord(
-        incident_id=incident_id,
-        plan_id=plan_id,
-        actor=user.username,
-        steps_executed=rollback_steps,
-        success=all(s.success for s in rollback_steps),
-    )
-
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            await persist_rollback_record(conn, record)
+            await persist_rollback_record(lock_conn, record)
             await write_audit_log(
-                conn,
+                lock_conn,
                 actor=user.username,
                 action="api.remediation.rollback",
                 target_resource=str(incident_id),
@@ -158,6 +154,8 @@ async def trigger_rollback(
                     "steps_executed": len(rollback_steps),
                 },
             )
+
+            await release_remediation_lock(lock_conn)
 
     try:
         from ..api.event_bus import get_event_bus

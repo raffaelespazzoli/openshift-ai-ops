@@ -203,20 +203,18 @@ async def _run_execution_cycle(
 
     outcome = await observe_outcome(incident_id, artifact, execution_log)
 
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            await persist_outcome_result(conn, outcome)
-
     if outcome.alert_resolved:
         final_state = transition(IncidentState.OBSERVING, IncidentState.RESOLVED)
     else:
         final_state = transition(IncidentState.OBSERVING, IncidentState.FAILED)
 
     async with pool.acquire() as conn:
-        await transition_incident_state(
-            conn, incident_id,
-            IncidentState.OBSERVING.value, final_state.value,
-        )
+        async with conn.transaction():
+            await persist_outcome_result(conn, outcome)
+            await transition_incident_state(
+                conn, incident_id,
+                IncidentState.OBSERVING.value, final_state.value,
+            )
 
     await _emit_execution_event(
         incident_id, "observation",
@@ -246,6 +244,9 @@ async def _recover_stranded_observing(config: ExecutionSettings) -> None:
 
     An incident can get stranded if the pod crashes after transitioning
     to 'observing' but before persisting the outcome result.
+
+    Recovery acquires the global remediation lock to prevent concurrent
+    execution during the observation window.
     """
     import json as _json
 
@@ -272,6 +273,33 @@ async def _recover_stranded_observing(config: ExecutionSettings) -> None:
         extra={"incident_id": str(incident_id)},
     )
 
+    async with pool.acquire() as lock_conn:
+        async with lock_conn.transaction():
+            acquired = await acquire_remediation_lock(lock_conn, incident_id)
+            if not acquired:
+                logger.info(
+                    "Lock not available — deferring recovery to next poll",
+                    extra={"incident_id": str(incident_id)},
+                )
+                return
+
+            try:
+                await _run_recovery_observation(
+                    incident_id, config, pool, lock_conn,
+                )
+            finally:
+                await release_remediation_lock(lock_conn)
+
+
+async def _run_recovery_observation(
+    incident_id: uuid.UUID,
+    config: ExecutionSettings,
+    pool,
+    lock_conn,
+) -> None:
+    """Execute recovery observation under the already-held global lock."""
+    import json as _json
+
     async with pool.acquire() as conn:
         execution_log = await load_execution_log(conn, incident_id)
         artifact_row = await conn.fetchrow(
@@ -293,20 +321,18 @@ async def _recover_stranded_observing(config: ExecutionSettings) -> None:
 
     outcome = await observe_outcome(incident_id, artifact, execution_log)
 
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            await persist_outcome_result(conn, outcome)
-
     if outcome.alert_resolved:
         final_state = transition(IncidentState.OBSERVING, IncidentState.RESOLVED)
     else:
         final_state = transition(IncidentState.OBSERVING, IncidentState.FAILED)
 
     async with pool.acquire() as conn:
-        await transition_incident_state(
-            conn, incident_id,
-            IncidentState.OBSERVING.value, final_state.value,
-        )
+        async with conn.transaction():
+            await persist_outcome_result(conn, outcome)
+            await transition_incident_state(
+                conn, incident_id,
+                IncidentState.OBSERVING.value, final_state.value,
+            )
 
     await _emit_execution_event(
         incident_id, "observation",

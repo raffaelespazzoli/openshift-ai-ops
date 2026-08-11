@@ -5,7 +5,7 @@ verification pass/fail affects confidence score.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -165,13 +165,11 @@ class TestOutcomeWebhookResolved:
         mock_pool = AsyncMock()
         mock_pool.acquire = lambda: _AsyncCtx(mock_conn)
 
-        call_count = 0
+        fake_now = datetime(2025, 1, 1, tzinfo=timezone.utc)
 
-        async def instant_sleep(_):
-            nonlocal call_count
-            call_count += 1
-            if call_count > 2:
-                raise StopIteration
+        async def time_advancing_sleep(_duration):
+            nonlocal fake_now
+            fake_now += timedelta(seconds=10)
 
         settings = ExecutionSettings(
             observation_timeout_seconds=1,
@@ -191,15 +189,21 @@ class TestOutcomeWebhookResolved:
                 new_callable=AsyncMock,
                 return_value={"all_healthy": True, "resources": []},
             ),
+            patch(
+                "src.pipeline.outcome_observer.datetime",
+                wraps=datetime,
+            ) as mock_dt,
         ):
+            mock_dt.now = lambda tz=None: fake_now
             result = await observe_outcome(
                 incident_id, artifact, execution_log,
                 settings=settings,
-                _sleep=instant_sleep,
+                _sleep=time_advancing_sleep,
             )
 
         assert result.alert_resolved is False
         assert result.outcome_confidence == OutcomeConfidence.VERIFICATION_ONLY
+        assert result.resolution_method == "verification"
 
 
 class TestOutcomeTimeout:
