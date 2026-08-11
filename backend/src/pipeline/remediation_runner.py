@@ -83,28 +83,35 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
 
         plan = RemediationPlan.model_validate(plan_dict)
 
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                await persist_remediation_plan(conn, plan)
-                await _persist_skeptic_artifacts(
-                    conn, incident_id, final_state
-                )
-                if final_state.get("skeptic_verdict"):
-                    verdict = final_state["skeptic_verdict"]
-                    await pipeline_audit_log(
-                        incident_id=str(incident_id),
-                        stage_name="skeptic_validation",
-                        state_before="validating",
-                        state_after="validated",
-                        extra_detail={
-                            "rounds_completed": verdict.get("rounds_completed"),
-                            "hash_changed": (
-                                verdict.get("original_plan_hash")
-                                != verdict.get("final_plan_hash")
-                            ),
-                        },
-                        conn=conn,
+        try:
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    await persist_remediation_plan(conn, plan)
+                    await _persist_skeptic_artifacts(
+                        conn, incident_id, final_state
                     )
+                    if final_state.get("skeptic_verdict"):
+                        verdict = final_state["skeptic_verdict"]
+                        await pipeline_audit_log(
+                            incident_id=str(incident_id),
+                            stage_name="skeptic_validation",
+                            state_before="validating",
+                            state_after="validated",
+                            extra_detail={
+                                "rounds_completed": verdict.get("rounds_completed"),
+                                "hash_changed": (
+                                    verdict.get("original_plan_hash")
+                                    != verdict.get("final_plan_hash")
+                                ),
+                            },
+                            conn=conn,
+                        )
+        except Exception:
+            if final_state.get("skeptic_verdict"):
+                await _emit_remediation_event(
+                    incident_id, "skeptic_validation", "failed"
+                )
+            raise
 
         if final_state.get("skeptic_verdict"):
             await _emit_remediation_event(

@@ -104,8 +104,14 @@ async def run_remediation_skeptic_validation(
             original_hash = current_hash
             continue
 
+    rebuttal_failed = any(
+        entry.get("rebuttal_failed") for entry in challenge_history
+    )
+
     verdict = RemediationSkepticVerdict(
         passed=True,
+        degraded=rebuttal_failed,
+        verdict_note="rebuttal_failed" if rebuttal_failed else None,
         rounds_completed=len(challenge_history),
         original_plan_hash=plan.plan_hash(),
         final_plan_hash=current_plan.plan_hash(),
@@ -114,6 +120,7 @@ async def run_remediation_skeptic_validation(
             f"Plan validated after {len(challenge_history)} skeptic "
             f"round(s). Original hash: {plan.plan_hash()[:16]}..., "
             f"final hash: {current_plan.plan_hash()[:16]}..."
+            + (" [degraded: rebuttal failed]" if rebuttal_failed else "")
         ),
     )
 

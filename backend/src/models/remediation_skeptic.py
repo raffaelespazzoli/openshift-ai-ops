@@ -30,6 +30,8 @@ class RemediationSkepticVerdict(BaseModel):
     """Outcome of the full remediation skeptic validation loop."""
 
     passed: bool
+    degraded: bool = False
+    verdict_note: str | None = None
     rounds_completed: int = Field(ge=1, le=2)
     original_plan_hash: str = Field(min_length=1)
     final_plan_hash: str = Field(min_length=1)
