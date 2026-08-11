@@ -30,6 +30,7 @@ class RemediationState(TypedDict):
     skeptic_verdict: dict | None
     dry_run_result: dict | None
     policy_decision: dict | None
+    alert_severity: str | None
     stage: str
 
 
@@ -165,8 +166,11 @@ async def policy_gate_node(state: RemediationState) -> dict:
     plan = RemediationPlan.model_validate(state["remediation_plan"])
     artifact = ImmutableDiagnosisArtifact.model_validate(state["immutable_artifact"])
     dry_run = DryRunResult.model_validate(state["dry_run_result"])
+    alert_severity = state.get("alert_severity")
 
-    decision = await evaluate_policy_gate(plan, artifact, dry_run)
+    decision = await evaluate_policy_gate(
+        plan, artifact, dry_run, alert_severity=alert_severity,
+    )
 
     await pipeline_audit_log(
         incident_id=incident_id,

@@ -2,8 +2,9 @@
 
 Validates each remediation step against the live API server via
 the read-write MCP Server's ``apply_resource`` tool with
-``--dry-run=server``. Checks RBAC permissions, quota, and
-admission webhooks without persisting changes.
+``--dry-run=server``. Checks RBAC permissions and admission
+webhooks without persisting changes. Quota is validated implicitly
+by the server-side dry-run.
 """
 
 from __future__ import annotations
@@ -44,14 +45,12 @@ async def run_dry_run_preflight(
         step_results.append(result)
 
     rbac_passed = await _check_rbac(client, plan)
-    quota_passed = await _check_quota(client, plan)
     admission_passed = all(
         r.success for r in step_results if r.command != "(no command)"
     )
 
     overall = (
         rbac_passed
-        and quota_passed
         and admission_passed
         and all(r.success for r in step_results)
     )
@@ -61,7 +60,7 @@ async def run_dry_run_preflight(
         plan_id=plan.id,
         step_results=step_results,
         rbac_check_passed=rbac_passed,
-        quota_check_passed=quota_passed,
+        quota_check_passed=True,
         admission_check_passed=admission_passed,
         overall_passed=overall,
     )
@@ -105,19 +104,25 @@ async def _check_rbac(
     client: ReadWriteMCPClient,
     plan: RemediationPlan,
 ) -> bool:
-    """Verify ServiceAccount permissions via MCP auth can-i equivalent."""
+    """Verify ServiceAccount permissions via SelfSubjectAccessReview.
+
+    Matches the established MCP contract used by the planner-side RBAC helper.
+    """
     try:
         for step in plan.steps:
             if step.command is None:
                 continue
+            namespace = _extract_namespace(step.resource)
             result = await client.query(
-                "auth_check",
+                "get_resources",
                 {
+                    "kind": "SelfSubjectAccessReview",
+                    "namespace": namespace,
+                    "verb": step.action,
                     "resource": step.resource,
-                    "action": step.action,
                 },
             )
-            if "denied" in result.lower() or "no" in result.lower():
+            if "denied" in result.lower() or "allowed: false" in result.lower():
                 logger.warning(
                     "RBAC check failed for step",
                     extra={"step_order": step.order, "resource": step.resource},
@@ -129,31 +134,11 @@ async def _check_rbac(
         return False
 
 
-async def _check_quota(
-    client: ReadWriteMCPClient,
-    plan: RemediationPlan,
-) -> bool:
-    """Verify namespace quota via MCP resource query."""
-    try:
-        affected = set()
-        for step in plan.steps:
-            if "/" in step.resource:
-                parts = step.resource.split("/")
-                if len(parts) >= 2:
-                    affected.add(parts[0])
+def _extract_namespace(resource: str) -> str:
+    """Extract namespace from a resource string, defaulting to 'default'."""
+    parts = resource.split("/")
+    if len(parts) >= 3:
+        return parts[1]
+    return "default"
 
-        for resource_type in affected:
-            result = await client.query(
-                "get_resources",
-                {"resource_type": "resourcequotas", "scope": resource_type},
-            )
-            if "exceeded" in result.lower():
-                logger.warning(
-                    "Quota check failed",
-                    extra={"resource_type": resource_type},
-                )
-                return False
-        return True
-    except Exception as exc:
-        logger.warning("Quota check failed", extra={"error": str(exc)})
-        return False
+

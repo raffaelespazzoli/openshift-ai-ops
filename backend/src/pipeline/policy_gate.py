@@ -29,6 +29,7 @@ async def evaluate_policy_gate(
     artifact: ImmutableDiagnosisArtifact,
     dry_run: DryRunResult,
     settings: PolicyMatrixSettings | None = None,
+    alert_severity: str | None = None,
 ) -> PolicyDecision:
     """Evaluate the policy gate for auto-execution eligibility.
 
@@ -44,7 +45,7 @@ async def evaluate_policy_gate(
     evidence_gaps_empty = len(artifact.evidence_gaps) == 0
     evidence_complete = _check_causal_chain_evidence(artifact)
 
-    severity_dim = _evaluate_severity(artifact, config)
+    severity_dim = _evaluate_severity(alert_severity, config)
     blast_radius_dim = _evaluate_blast_radius(plan, config)
     confidence_dim = _evaluate_confidence(artifact, config)
 
@@ -78,18 +79,17 @@ def _check_causal_chain_evidence(artifact: ImmutableDiagnosisArtifact) -> bool:
     """Check each causal chain element has at least one supporting evidence artifact.
 
     Per FR-13: evidence artifacts required per causal chain element.
+    Iterates per-artifact to avoid set-deduplication or zip-truncation
+    dropping valid pairings.
     """
     if not artifact.causal_chain:
         return False
 
-    evidence_texts = {e.result.lower() for e in artifact.evidence}
-    evidence_queries = {e.query.lower() for e in artifact.evidence}
-
     for chain_element in artifact.causal_chain:
         element_lower = chain_element.lower()
         has_support = any(
-            element_lower in text or element_lower in query
-            for text, query in zip(evidence_texts, evidence_queries)
+            element_lower in e.result.lower() or element_lower in e.query.lower()
+            for e in artifact.evidence
         )
         if not has_support:
             return False
@@ -98,15 +98,15 @@ def _check_causal_chain_evidence(artifact: ImmutableDiagnosisArtifact) -> bool:
 
 
 def _evaluate_severity(
-    artifact: ImmutableDiagnosisArtifact,
+    alert_severity: str | None,
     config: PolicyMatrixSettings,
 ) -> PolicyDimension:
-    """Evaluate severity dimension against auto-approve threshold."""
-    severity = getattr(artifact, "severity", None)
-    if severity is None:
-        severity = _infer_severity(artifact)
+    """Evaluate severity dimension against auto-approve threshold.
 
-    severity_str = str(severity).lower()
+    Uses the AlertManager severity from the incident record (AC #3),
+    not inferred from diagnosis taxonomy.
+    """
+    severity_str = (alert_severity or "unknown").lower()
     threshold_str = ", ".join(config.severity_auto_approve) or "(none)"
     passed = severity_str in [s.lower() for s in config.severity_auto_approve]
 
@@ -116,16 +116,6 @@ def _evaluate_severity(
         threshold=threshold_str,
         passed=passed,
     )
-
-
-def _infer_severity(artifact: ImmutableDiagnosisArtifact) -> str:
-    """Infer severity from the root cause code when not explicitly set."""
-    code = artifact.root_cause_code
-    if "oom" in code or "not-ready" in code or "etcd" in code or "api-server" in code:
-        return "critical"
-    if "crash-loop" in code or "disk-pressure" in code:
-        return "warning"
-    return "info"
 
 
 def _evaluate_blast_radius(

@@ -128,7 +128,9 @@ class TestPolicyGateAllPass:
         dry_run = _make_dry_run(incident_id=iid, plan_id=plan.id)
 
         decision = await evaluate_policy_gate(
-            plan, artifact, dry_run, settings=_permissive_settings()
+            plan, artifact, dry_run,
+            settings=_permissive_settings(),
+            alert_severity="warning",
         )
 
         assert decision.auto_execution_approved is True
@@ -157,7 +159,9 @@ class TestPolicyGateEvidenceGaps:
         dry_run = _make_dry_run(incident_id=iid, plan_id=plan.id)
 
         decision = await evaluate_policy_gate(
-            plan, artifact, dry_run, settings=_permissive_settings()
+            plan, artifact, dry_run,
+            settings=_permissive_settings(),
+            alert_severity="warning",
         )
 
         assert decision.auto_execution_approved is False
@@ -185,7 +189,9 @@ class TestPolicyGateCausalChainEvidence:
         dry_run = _make_dry_run(incident_id=iid, plan_id=plan.id)
 
         decision = await evaluate_policy_gate(
-            plan, artifact, dry_run, settings=_permissive_settings()
+            plan, artifact, dry_run,
+            settings=_permissive_settings(),
+            alert_severity="warning",
         )
 
         assert decision.auto_execution_approved is False
@@ -202,7 +208,9 @@ class TestPolicyGateCausalChainEvidence:
         dry_run = _make_dry_run(incident_id=iid, plan_id=plan.id)
 
         decision = await evaluate_policy_gate(
-            plan, artifact, dry_run, settings=_permissive_settings()
+            plan, artifact, dry_run,
+            settings=_permissive_settings(),
+            alert_severity="warning",
         )
 
         assert decision.auto_execution_approved is False
@@ -240,7 +248,9 @@ class TestPolicyGateDryRunFailed:
         )
 
         decision = await evaluate_policy_gate(
-            plan, artifact, dry_run, settings=_permissive_settings()
+            plan, artifact, dry_run,
+            settings=_permissive_settings(),
+            alert_severity="warning",
         )
 
         assert decision.auto_execution_approved is False
@@ -250,6 +260,7 @@ class TestPolicyGateDryRunFailed:
 class TestPolicyGateSeverityDimension:
     @pytest.mark.unit
     async def test_severity_below_threshold_fails(self):
+        """Alert severity 'critical' is not in auto-approve list ['info']."""
         iid = uuid.uuid4()
         plan = _make_plan(incident_id=iid)
         artifact = _make_artifact(incident_id=iid)
@@ -262,10 +273,34 @@ class TestPolicyGateSeverityDimension:
         )
 
         decision = await evaluate_policy_gate(
-            plan, artifact, dry_run, settings=settings
+            plan, artifact, dry_run, settings=settings,
+            alert_severity="critical",
         )
 
         severity_dim = next(d for d in decision.dimensions if d.name == "severity")
+        assert severity_dim.passed is False
+
+    @pytest.mark.unit
+    async def test_severity_none_uses_unknown(self):
+        """When alert_severity is None, defaults to 'unknown'."""
+        iid = uuid.uuid4()
+        plan = _make_plan(incident_id=iid)
+        artifact = _make_artifact(incident_id=iid)
+        dry_run = _make_dry_run(incident_id=iid, plan_id=plan.id)
+
+        settings = PolicyMatrixSettings(
+            severity_auto_approve=["info"],
+            blast_radius_auto_approve=["workload"],
+            confidence_minimum=0.5,
+        )
+
+        decision = await evaluate_policy_gate(
+            plan, artifact, dry_run, settings=settings,
+            alert_severity=None,
+        )
+
+        severity_dim = next(d for d in decision.dimensions if d.name == "severity")
+        assert severity_dim.value == "unknown"
         assert severity_dim.passed is False
 
 
@@ -284,7 +319,8 @@ class TestPolicyGateBlastRadiusDimension:
         )
 
         decision = await evaluate_policy_gate(
-            plan, artifact, dry_run, settings=settings
+            plan, artifact, dry_run, settings=settings,
+            alert_severity="warning",
         )
 
         br_dim = next(d for d in decision.dimensions if d.name == "blast_radius")
@@ -307,7 +343,8 @@ class TestPolicyGateConfidenceDimension:
         )
 
         decision = await evaluate_policy_gate(
-            plan, artifact, dry_run, settings=settings
+            plan, artifact, dry_run, settings=settings,
+            alert_severity="warning",
         )
 
         conf_dim = next(d for d in decision.dimensions if d.name == "confidence")

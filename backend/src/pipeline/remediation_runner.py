@@ -50,6 +50,9 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
         pool = await get_pool()
         async with pool.acquire() as conn:
             artifact = await load_immutable_artifact(conn, incident_id)
+            alert_severity = await conn.fetchval(
+                "SELECT severity FROM incidents WHERE id = $1", incident_id
+            )
 
         checkpointer = await get_checkpointer()
         builder = build_remediation_graph()
@@ -63,6 +66,7 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
             "skeptic_verdict": None,
             "dry_run_result": None,
             "policy_decision": None,
+            "alert_severity": alert_severity,
             "stage": "entered",
         }
 
@@ -253,15 +257,28 @@ async def _handle_policy_decision(
 
     decision = PolicyDecision.model_validate(decision_dict)
 
+    current_val = await conn.fetchval(
+        "SELECT state FROM incidents WHERE id = $1", incident_id
+    )
+    if current_val is None:
+        logger.warning(
+            "Incident not found for policy decision",
+            extra={"incident_id": str(incident_id)},
+        )
+        return
+    current = IncidentState(current_val)
+
     if decision.auto_execution_approved:
-        new_state = transition(IncidentState.DIAGNOSED, IncidentState.EXECUTING)
+        new_state = transition(current, IncidentState.EXECUTING)
     else:
-        new_state = transition(IncidentState.DIAGNOSED, IncidentState.AWAITING_APPROVAL)
+        new_state = transition(current, IncidentState.AWAITING_APPROVAL)
 
     await conn.execute(
-        "UPDATE incidents SET state = $1, updated_at = NOW() WHERE id = $2",
+        "UPDATE incidents SET state = $1, updated_at = NOW() "
+        "WHERE id = $2 AND state = $3",
         new_state.value,
         incident_id,
+        current_val,
     )
 
     from ..db.audit import write_audit_log

@@ -45,7 +45,7 @@ def _make_plan(incident_id=None, diagnosis_id=None) -> RemediationPlan:
     )
 
 
-def _make_mock_pool(mock_conn=None):
+def _make_mock_pool(mock_conn=None, current_state="planning"):
     """Create a properly structured mock pool with async context manager."""
     conn = mock_conn or AsyncMock()
 
@@ -54,6 +54,19 @@ def _make_mock_pool(mock_conn=None):
         yield
 
     conn.transaction = _transaction
+
+    original_fetchval = conn.fetchval
+
+    async def _fetchval(query, *args, **kwargs):
+        if "SELECT severity" in query:
+            return "warning"
+        if "SELECT state" in query:
+            return current_state
+        if hasattr(original_fetchval, 'return_value'):
+            return await original_fetchval(query, *args, **kwargs)
+        return None
+
+    conn.fetchval = _fetchval
 
     @contextlib.asynccontextmanager
     async def _acquire():
@@ -291,7 +304,7 @@ class TestRunnerPolicyDecision:
         mock_artifact.model_dump.return_value = {}
 
         mock_conn = AsyncMock()
-        mock_pool = _make_mock_pool(mock_conn)
+        mock_pool = _make_mock_pool(mock_conn, current_state="planning")
 
         async def mock_get_pool():
             return mock_pool
@@ -365,7 +378,7 @@ class TestRunnerPolicyDecision:
         mock_artifact.model_dump.return_value = {}
 
         mock_conn = AsyncMock()
-        mock_pool = _make_mock_pool(mock_conn)
+        mock_pool = _make_mock_pool(mock_conn, current_state="planning")
 
         async def mock_get_pool():
             return mock_pool

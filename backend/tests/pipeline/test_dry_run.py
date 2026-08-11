@@ -163,8 +163,8 @@ class TestDryRunRBACDenied:
     @pytest.mark.unit
     async def test_rbac_denied_overall_false(self):
         async def mock_query(tool_name, arguments, **kwargs):
-            if tool_name == "auth_check":
-                return "denied: insufficient permissions"
+            if tool_name == "get_resources" and arguments.get("kind") == "SelfSubjectAccessReview":
+                return "allowed: false — denied: insufficient permissions"
             return "ok"
 
         mock_client = AsyncMock()
@@ -179,24 +179,19 @@ class TestDryRunRBACDenied:
         assert result.overall_passed is False
 
 
-class TestDryRunQuotaExceeded:
+class TestDryRunQuotaViaServerDryRun:
     @pytest.mark.unit
-    async def test_quota_exceeded_overall_false(self):
-        async def mock_query(tool_name, arguments, **kwargs):
-            if tool_name == "get_resources":
-                return "quota exceeded for resource"
-            return "ok"
-
+    async def test_quota_always_true_relies_on_server_dry_run(self):
+        """Quota is validated implicitly by server-side dry-run, not a separate check."""
         mock_client = AsyncMock()
-        mock_client.query = mock_query
+        mock_client.query = AsyncMock(return_value="resource applied (dry-run)")
 
         plan = _make_plan()
         artifact = _make_artifact(plan.incident_id)
 
         result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
 
-        assert result.quota_check_passed is False
-        assert result.overall_passed is False
+        assert result.quota_check_passed is True
 
 
 class TestDryRunInformationalSteps:

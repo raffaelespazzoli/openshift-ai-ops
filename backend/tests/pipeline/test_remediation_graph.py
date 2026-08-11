@@ -123,6 +123,7 @@ def _make_initial_state(incident_id=None) -> RemediationState:
         "skeptic_verdict": None,
         "dry_run_result": None,
         "policy_decision": None,
+        "alert_severity": "warning",
         "stage": "entered",
     }
 

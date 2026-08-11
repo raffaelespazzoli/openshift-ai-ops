@@ -740,16 +740,25 @@ Claude Opus 4.6 (via Cursor)
 
 ### Review Model Used
 
-(to be filled during review)
+GPT-5.4 (Review Round 1)
 
 ### Review Findings
 
-(to be filled during review)
+1. [Decision] Namespace source for quota validation — resolved: skip explicit quota pre-checks, rely on server-side dry-run
+2. [Patch] Policy gate bypasses the persisted current-state transition guard — `_handle_policy_decision()` hardcoded `IncidentState.DIAGNOSED` instead of reading actual DB state
+3. [Patch] Policy severity sourced from root-cause taxonomy instead of AlertManager severity — `_infer_severity()` used `root_cause_code` rather than incident-level alert severity
+4. [Patch] Dry-run RBAC probing doesn't match existing MCP SelfSubjectAccessReview contract — used `auth_check` with `"no"` substring check instead of `get_resources(kind="SelfSubjectAccessReview")`
+5. [Patch] Causal-chain evidence completeness `zip()` truncation bug — set deduplication + `zip()` could drop valid evidence pairings
 
 ### Decisions Needed / Decisions Taken
 
-(to be filled during review)
+- **Quota validation**: Skip explicit namespace-scoped quota pre-checks. Server-side dry-run (`--dry-run=server`) validates quota implicitly. Removed `_check_quota()`, set `quota_check_passed=True` always.
+- **State machine update**: Added `EXECUTING` to `PLANNING`'s valid transitions to support the auto-approve path when the dispatcher has already moved state to `planning`.
 
 ### Fixes Applied
 
-(to be filled during review)
+1. **WHERE state guard** (`remediation_runner.py`): `_handle_policy_decision()` now reads actual current state via `SELECT state FROM incidents`, passes it to `transition()`, and uses `WHERE state = $3` guard on the UPDATE to prevent race conditions.
+2. **AlertManager severity** (`policy_gate.py`): `evaluate_policy_gate()` now accepts `alert_severity: str | None` sourced from the incident record. Removed `_infer_severity()`. `RemediationState` carries `alert_severity` loaded from DB in the runner.
+3. **RBAC contract** (`dry_run.py`): `_check_rbac()` now uses `get_resources(kind="SelfSubjectAccessReview", namespace=..., verb=..., resource=...)` matching the established planner-side RBAC helper. Replaced `"no" in result` substring check with `"allowed: false"` for precise matching.
+4. **Evidence zip() bug** (`policy_gate.py`): `_check_causal_chain_evidence()` now iterates over `artifact.evidence` directly per causal chain element, avoiding set-deduplication and `zip()` truncation.
+5. **Quota simplification** (`dry_run.py`): Removed `_check_quota()` entirely. Quota validated implicitly by server-side dry-run. `quota_check_passed` always `True`.
