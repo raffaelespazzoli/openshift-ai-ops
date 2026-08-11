@@ -74,15 +74,19 @@ async def _check_alert_still_firing(
     conn: asyncpg.Connection,
     incident_id: uuid.UUID,
 ) -> bool:
-    """Check if any resolved webhook was recorded for this incident's alerts.
+    """Returns True if at least one alert is still firing.
 
-    Returns True if alert is still firing (no resolved record found).
+    For correlated incidents (multiple alerts grouped), one alert resolving
+    shouldn't invalidate the whole incident. The incident is stale only if
+    ALL alerts are resolved (meaning the problem self-healed).
     """
-    resolved_count = await conn.fetchval(
-        """
-        SELECT COUNT(*) FROM alerts
-        WHERE incident_id = $1 AND status = 'resolved'
-        """,
+    total = await conn.fetchval(
+        "SELECT COUNT(*) FROM alerts WHERE incident_id = $1", incident_id
+    )
+    resolved = await conn.fetchval(
+        "SELECT COUNT(*) FROM alerts WHERE incident_id = $1 AND status = 'resolved'",
         incident_id,
     )
-    return resolved_count == 0
+    if total == 0:
+        return True  # No alerts tracked — assume still firing (conservative)
+    return resolved < total  # Still firing if not ALL resolved

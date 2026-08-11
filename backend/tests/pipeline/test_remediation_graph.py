@@ -42,6 +42,11 @@ from src.pipeline.remediation_graph import (
     skeptic_validation_node,
 )
 
+# NOTE: execute_node, freshness_gate_node, observe_node, should_execute are
+# defined in remediation_graph.py but NOT wired into the planning graph.
+# They're called directly by the execution_dispatcher.
+# Tests for those functions remain here to validate their behaviour.
+
 
 def _make_artifact_dict(incident_id=None) -> dict:
     """Create a valid ImmutableDiagnosisArtifact dict for state."""
@@ -756,26 +761,26 @@ class TestExecuteNode:
         assert result["stage"] == "executed"
 
 
-class TestGraphHasNewNodes:
-    """Graph includes freshness_gate, execute, observe nodes."""
+class TestGraphExcludesExecutionNodes:
+    """Planning graph does NOT include execution-phase nodes (they're called by dispatcher)."""
 
     @pytest.mark.unit
-    def test_graph_has_freshness_gate_node(self):
+    def test_graph_excludes_freshness_gate_node(self):
         builder = build_remediation_graph()
         graph = builder.compile()
-        assert "freshness_gate" in graph.nodes
+        assert "freshness_gate" not in graph.nodes
 
     @pytest.mark.unit
-    def test_graph_has_execute_node(self):
+    def test_graph_excludes_execute_node(self):
         builder = build_remediation_graph()
         graph = builder.compile()
-        assert "execute" in graph.nodes
+        assert "execute" not in graph.nodes
 
     @pytest.mark.unit
-    def test_graph_has_observe_node(self):
+    def test_graph_excludes_observe_node(self):
         builder = build_remediation_graph()
         graph = builder.compile()
-        assert "observe" in graph.nodes
+        assert "observe" not in graph.nodes
 
 
 class _AsyncCtx:

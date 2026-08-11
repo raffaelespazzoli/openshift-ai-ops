@@ -1,7 +1,9 @@
 """LangGraph StateGraph definition for the remediation pipeline (AD-1, Story 3.1/3.2/3.3/3.5).
 
-Graph structure: entry → plan → skeptic_validation → dry_run → policy_gate
-                       → freshness_gate → {execute | end_stale} → observe → END
+Graph structure (planning only): entry → plan → skeptic_validation → dry_run → policy_gate → END
+
+Execution nodes (freshness_gate, execute, observe) are defined here as functions
+but are NOT wired into the graph — the execution_dispatcher calls them directly.
 """
 
 from __future__ import annotations
@@ -192,32 +194,24 @@ async def policy_gate_node(state: RemediationState) -> dict:
 
 
 def build_remediation_graph() -> StateGraph:
-    """Build the LangGraph StateGraph for remediation (not yet compiled).
+    """Build the LangGraph StateGraph for remediation planning (not yet compiled).
 
-    Graph structure (Story 3.5 — FINAL for Epic 3):
-      entry → plan → skeptic_validation → dry_run → policy_gate
-            → freshness_gate → {execute | end_stale} → observe → END
+    Planning-only graph:
+      entry → plan → skeptic_validation → dry_run → policy_gate → END
+
+    Execution (freshness_gate → execute → observe) is handled by the
+    execution_dispatcher, which calls the node functions directly.
     """
     builder = StateGraph(RemediationState)
     builder.add_node("plan", plan_node)
     builder.add_node("skeptic_validation", skeptic_validation_node)
     builder.add_node("dry_run", dry_run_node)
     builder.add_node("policy_gate", policy_gate_node)
-    builder.add_node("freshness_gate", freshness_gate_node)
-    builder.add_node("execute", execute_node)
-    builder.add_node("observe", observe_node)
     builder.set_entry_point("plan")
     builder.add_edge("plan", "skeptic_validation")
     builder.add_edge("skeptic_validation", "dry_run")
     builder.add_edge("dry_run", "policy_gate")
-    builder.add_edge("policy_gate", "freshness_gate")
-    builder.add_conditional_edges(
-        "freshness_gate",
-        should_execute,
-        {"execute": "execute", "end_stale": END},
-    )
-    builder.add_edge("execute", "observe")
-    builder.add_edge("observe", END)
+    builder.add_edge("policy_gate", END)
     return builder
 
 

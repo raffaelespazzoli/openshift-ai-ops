@@ -146,15 +146,21 @@ async def _check_alert_resolved(
     conn,
     incident_id: uuid.UUID,
 ) -> bool:
-    """Check if a resolved webhook has been recorded for this incident."""
-    count = await conn.fetchval(
-        """
-        SELECT COUNT(*) FROM alerts
-        WHERE incident_id = $1 AND status = 'resolved'
-        """,
+    """Check if ALL alerts for this incident have resolved.
+
+    For correlated incidents (multiple alerts grouped), all alerts
+    must resolve for the remediation to be considered successful.
+    """
+    total = await conn.fetchval(
+        "SELECT COUNT(*) FROM alerts WHERE incident_id = $1", incident_id
+    )
+    resolved = await conn.fetchval(
+        "SELECT COUNT(*) FROM alerts WHERE incident_id = $1 AND status = 'resolved'",
         incident_id,
     )
-    return count > 0
+    if total == 0:
+        return False  # No alerts to check — can't confirm resolution
+    return resolved >= total  # All alerts resolved
 
 
 async def _check_alert_refired(

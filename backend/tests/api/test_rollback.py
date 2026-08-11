@@ -62,6 +62,15 @@ async def _seed_executed_incident(db_url, *, state="resolved", include_rollback=
             VALUES ($1, $2, $3, $4::jsonb, 'workload', 'low', NOW())""",
             plan_id, incident_id, diagnosis_id, plan_data,
         )
+
+        exec_id = uuid.uuid4()
+        exec_steps = json.dumps([{"step_order": 1, "command": "kubectl apply", "started_at": now.isoformat(), "completed_at": now.isoformat(), "success": True, "output": "applied"}])
+        await conn.execute(
+            """INSERT INTO execution_logs (id, incident_id, plan_id, steps, mcp_calls, started_at, completed_at, status)
+            VALUES ($1, $2, $3, $4::jsonb, '[]'::jsonb, $5, $6, 'completed')""",
+            exec_id, incident_id, plan_id, exec_steps, now, now,
+        )
+
         return incident_id, plan_id, diagnosis_id
     finally:
         await conn.close()
@@ -89,9 +98,11 @@ class TestRollbackSuccess:
             db_url, state="resolved"
         )
         try:
-            with patch(
-                "src.api.rollback.ReadWriteMCPClient"
-            ) as MockMCP:
+            with (
+                patch("src.api.rollback.ReadWriteMCPClient") as MockMCP,
+                patch("src.api.rollback.acquire_remediation_lock", new_callable=AsyncMock, return_value=True),
+                patch("src.api.rollback.release_remediation_lock", new_callable=AsyncMock),
+            ):
                 mock_instance = AsyncMock()
                 mock_instance.execute = AsyncMock(return_value="rolled back")
                 MockMCP.return_value = mock_instance
@@ -112,9 +123,11 @@ class TestRollbackSuccess:
             db_url, state="failed"
         )
         try:
-            with patch(
-                "src.api.rollback.ReadWriteMCPClient"
-            ) as MockMCP:
+            with (
+                patch("src.api.rollback.ReadWriteMCPClient") as MockMCP,
+                patch("src.api.rollback.acquire_remediation_lock", new_callable=AsyncMock, return_value=True),
+                patch("src.api.rollback.release_remediation_lock", new_callable=AsyncMock),
+            ):
                 mock_instance = AsyncMock()
                 mock_instance.execute = AsyncMock(return_value="rolled back")
                 MockMCP.return_value = mock_instance

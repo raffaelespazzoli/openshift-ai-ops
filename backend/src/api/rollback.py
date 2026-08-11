@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from ..config.logging import Component, get_logger, request_id_var
 from ..db import get_pool, write_audit_log
 from ..db.execution import persist_rollback_record
+from ..db.remediation_lock import acquire_remediation_lock, release_remediation_lock
 from ..models.api import ERROR_CONFLICT, ERROR_NOT_FOUND, ApiError, ApiMeta, ApiResponse
 from ..models.execution import ExecutionStepLog, RollbackRecord
 from ..models.remediation import RemediationPlan, RemediationStep
@@ -101,10 +102,39 @@ async def trigger_rollback(
                 status_code=409, content=error.model_dump(mode="json")
             )
 
+        exec_row = await conn.fetchrow(
+            "SELECT id, status FROM execution_logs WHERE incident_id = $1",
+            incident_id,
+        )
+        if exec_row is None:
+            error = ApiError(
+                error="No execution record found — remediation was never executed",
+                code=ERROR_CONFLICT,
+                detail={"incident_id": str(incident_id)},
+            )
+            return JSONResponse(
+                status_code=409, content=error.model_dump(mode="json")
+            )
+
     from ..pipeline.mcp_readwrite_client import ReadWriteMCPClient
 
-    mcp_client = ReadWriteMCPClient()
-    rollback_steps = await _execute_rollback(plan.rollback_plan, mcp_client)
+    async with pool.acquire() as lock_conn:
+        async with lock_conn.transaction():
+            locked = await acquire_remediation_lock(lock_conn, incident_id)
+            if not locked:
+                error = ApiError(
+                    error="Another remediation is currently executing. Retry later.",
+                    code=ERROR_CONFLICT,
+                    detail={"incident_id": str(incident_id)},
+                )
+                return JSONResponse(
+                    status_code=409, content=error.model_dump(mode="json")
+                )
+
+            mcp_client = ReadWriteMCPClient()
+            rollback_steps = await _execute_rollback(plan.rollback_plan, mcp_client)
+
+            await release_remediation_lock(lock_conn)
 
     record = RollbackRecord(
         incident_id=incident_id,
