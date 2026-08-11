@@ -7,6 +7,7 @@ from a previous pod lifecycle. Then polls on a configurable interval.
 from __future__ import annotations
 
 import asyncio
+import uuid
 
 import asyncpg
 
@@ -15,8 +16,10 @@ from ..config.queue_settings import get_queue_settings
 from ..db import get_pool
 from ..db.queue import (
     dequeue_next,
+    get_active_pipeline_count,
     get_rce_incident_ids,
     recover_stale_items,
+    recover_stale_remediation,
 )
 from ..models.state_machine import IncidentState, transition
 from .priority_queue import check_ttl_expired_items
@@ -244,6 +247,167 @@ async def _transition_incidents_to_diagnosing(
     return True
 
 
+async def dispatch_remediation(conn: asyncpg.Connection | asyncpg.Pool) -> None:
+    """Dispatch remediation planning for diagnosed incidents missing a plan.
+
+    Queries for incidents in 'diagnosed' state that have an immutable_diagnoses
+    row but no remediation_plans row, then atomically transitions each to
+    'planning' via the state machine before spawning the remediation pipeline.
+    The state transition acts as a durable claim — other replicas (or future
+    poll cycles after a restart) will not see incidents in 'diagnosed' state
+    once they have been claimed.
+
+    Respects the shared parallelism cap: remediation tasks count toward the
+    same ``active_pipelines`` limit as diagnosis pipelines.
+    """
+    settings = get_queue_settings()
+    # NOTE: The parallelism cap check is not atomic across replicas. In the
+    # current MVP (single-replica deployment) this is safe. For multi-replica
+    # deployments this should use a DB-backed atomic counter, e.g.
+    #   SELECT COUNT(*) FROM active_pipelines WHERE completed_at IS NULL
+    # inside the same transaction that inserts the new row, guarded by
+    # pg_advisory_xact_lock, to prevent cap over-subscription.
+    active_count = await get_active_pipeline_count(conn)
+    if active_count >= settings.parallelism_cap:
+        return
+
+    remaining_capacity = settings.parallelism_cap - active_count
+
+    rows = await conn.fetch(
+        """
+        SELECT i.id AS incident_id
+        FROM incidents i
+        JOIN immutable_diagnoses id ON id.incident_id = i.id
+        LEFT JOIN remediation_plans rp ON rp.incident_id = i.id
+        WHERE i.state = 'diagnosed'
+          AND rp.id IS NULL
+        ORDER BY i.updated_at ASC
+        LIMIT $1
+        """,
+        remaining_capacity,
+    )
+
+    for row in rows:
+        incident_id = row["incident_id"]
+        claimed = await _claim_for_planning(conn, incident_id)
+        if not claimed:
+            continue
+
+        pipeline_id = await _register_remediation_pipeline(conn, incident_id)
+
+        logger.info(
+            "Dispatching remediation for diagnosed incident",
+            extra={"incident_id": str(incident_id)},
+        )
+        task = asyncio.create_task(
+            _run_remediation_task(incident_id, pipeline_id)
+        )
+        _inflight_tasks.add(task)
+        task.add_done_callback(_remediation_task_done)
+
+
+async def _claim_for_planning(
+    conn: asyncpg.Connection | asyncpg.Pool,
+    incident_id,
+) -> bool:
+    """Atomically transition diagnosed → planning as a durable claim.
+
+    Returns True if the claim succeeded; False if the incident was already
+    claimed (by this or another replica) or the transition is invalid.
+    """
+    try:
+        current_state_val = await conn.fetchval(
+            "SELECT state FROM incidents WHERE id = $1", incident_id
+        )
+        if current_state_val is None:
+            return False
+        current = IncidentState(current_state_val)
+        new_state = transition(current, IncidentState.PLANNING)
+        result = await conn.execute(
+            "UPDATE incidents SET state = $2, updated_at = NOW() "
+            "WHERE id = $1 AND state = $3",
+            incident_id,
+            new_state.value,
+            current_state_val,
+        )
+        # result is e.g. "UPDATE 1" or "UPDATE 0"
+        return result == "UPDATE 1"
+    except Exception:
+        logger.debug(
+            "Could not claim incident for planning",
+            extra={"incident_id": str(incident_id)},
+        )
+        return False
+
+
+async def _register_remediation_pipeline(
+    conn: asyncpg.Connection | asyncpg.Pool,
+    incident_id,
+) -> uuid.UUID:
+    """Insert an active_pipelines row for a remediation task.
+
+    This ensures remediation tasks count toward the shared parallelism cap
+    alongside diagnosis pipelines.
+    """
+    pipeline_id = uuid.uuid4()
+    await conn.execute(
+        """
+        INSERT INTO active_pipelines (id, queue_item_id, incident_id, started_at)
+        VALUES ($1, NULL, $2, NOW())
+        """,
+        pipeline_id,
+        incident_id,
+    )
+    return pipeline_id
+
+
+async def _complete_remediation_pipeline(pipeline_id: uuid.UUID) -> None:
+    """Mark a remediation active_pipelines row as completed."""
+    try:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE active_pipelines
+                SET completed_at = NOW()
+                WHERE id = $1 AND completed_at IS NULL
+                """,
+                pipeline_id,
+            )
+    except Exception:
+        logger.warning(
+            "Could not mark remediation pipeline as completed",
+            extra={"pipeline_id": str(pipeline_id)},
+        )
+
+
+def _remediation_task_done(task: asyncio.Task) -> None:
+    """Cleanup callback for remediation tasks."""
+    _inflight_tasks.discard(task)
+    _inflight_items.pop(task, None)
+
+
+async def _run_remediation_task(incident_id, pipeline_id: uuid.UUID) -> None:
+    """Wrapper for run_remediation_pipeline that catches all errors."""
+    from .remediation_runner import run_remediation_pipeline
+
+    try:
+        await run_remediation_pipeline(incident_id)
+    except asyncio.CancelledError:
+        logger.info(
+            "Remediation task cancelled during shutdown",
+            extra={"incident_id": str(incident_id)},
+        )
+        raise
+    except Exception:
+        logger.exception(
+            "Remediation task crashed unexpectedly",
+            extra={"incident_id": str(incident_id)},
+        )
+    finally:
+        await _complete_remediation_pipeline(pipeline_id)
+
+
 async def run_dispatcher() -> None:
     """Background dispatch loop.
 
@@ -261,6 +425,12 @@ async def run_dispatcher() -> None:
                     logger.info(
                         "Dispatcher startup: recovered stale items",
                         extra={"recovered_count": recovered},
+                    )
+                rem_recovered = await recover_stale_remediation(conn)
+                if rem_recovered:
+                    logger.info(
+                        "Dispatcher startup: recovered stale remediation items",
+                        extra={"recovered_count": rem_recovered},
                     )
             break
         except asyncio.CancelledError:
@@ -284,6 +454,7 @@ async def run_dispatcher() -> None:
             pool = await get_pool()
             async with pool.acquire() as conn:
                 await check_ttl_expired_items(conn)
+                await dispatch_remediation(conn)
 
                 item = await dequeue_next(conn)
                 if item:

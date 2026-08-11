@@ -262,6 +262,73 @@ async def recover_stale_items(
     return recovered
 
 
+async def recover_stale_remediation(
+    conn: asyncpg.Connection | asyncpg.Pool,
+) -> int:
+    """Reset incidents stranded in 'planning' from a previous pod lifecycle.
+
+    Mirrors ``recover_stale_items`` for the diagnosis path: finds
+    ``active_pipelines`` rows whose remediation task has been running
+    longer than the stale timeout, transitions the associated incidents
+    from ``planning`` back to ``diagnosed`` (via the canonical state
+    machine), and marks those pipeline entries completed so the normal
+    dispatch loop can re-pick them.
+
+    Returns the number of incidents recovered.
+    """
+    settings = get_queue_settings()
+    timeout = settings.stale_processing_timeout_seconds
+
+    stale_rows = await conn.fetch(
+        """
+        SELECT ap.id AS pipeline_id, ap.incident_id
+        FROM active_pipelines ap
+        JOIN incidents i ON i.id = ap.incident_id
+        WHERE ap.completed_at IS NULL
+          AND ap.queue_item_id IS NULL
+          AND i.state = 'planning'
+          AND ap.started_at < NOW() - make_interval(secs => $1::double precision)
+        """,
+        float(timeout),
+    )
+
+    if not stale_rows:
+        return 0
+
+    recovered = 0
+    for row in stale_rows:
+        iid = row["incident_id"]
+        pid = row["pipeline_id"]
+        try:
+            from ..models.state_machine import IncidentState, transition
+
+            current = IncidentState.PLANNING
+            new_state = transition(current, IncidentState.DIAGNOSED)
+            await conn.execute(
+                "UPDATE incidents SET state = $2, updated_at = NOW() "
+                "WHERE id = $1 AND state = 'planning'",
+                iid,
+                new_state.value,
+            )
+            await conn.execute(
+                "UPDATE active_pipelines SET completed_at = NOW() WHERE id = $1",
+                pid,
+            )
+            recovered += 1
+        except Exception:
+            logger.warning(
+                "Could not recover stale remediation incident",
+                extra={"incident_id": str(iid)},
+            )
+
+    if recovered:
+        logger.info(
+            "Recovered stale remediation incidents",
+            extra={"recovered_count": recovered},
+        )
+    return recovered
+
+
 async def check_alert_still_firing(
     conn: asyncpg.Connection | asyncpg.Pool,
     incident_id: uuid.UUID,

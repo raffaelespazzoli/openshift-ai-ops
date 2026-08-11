@@ -723,6 +723,7 @@ class TestDispatcherTransactionalTransitions:
             patch.object(dispatcher_mod, "_transition_incidents_to_diagnosing", new_callable=AsyncMock, return_value=False),
             patch.object(dispatcher_mod, "dispatch_to_pipeline", new_callable=AsyncMock) as mock_dispatch,
             patch.object(dispatcher_mod, "_requeue_failed_transition", new_callable=AsyncMock) as mock_requeue,
+            patch.object(dispatcher_mod, "dispatch_remediation", new_callable=AsyncMock),
             patch("src.pipeline.dispatcher.dequeue_next", new_callable=AsyncMock, side_effect=dequeue_once),
             patch("src.pipeline.dispatcher.check_ttl_expired_items", new_callable=AsyncMock),
             patch("src.pipeline.dispatcher.recover_stale_items", new_callable=AsyncMock, return_value=0),

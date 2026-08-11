@@ -92,6 +92,8 @@ spec:
               value: "{{ .Values.queue.priorityWeights.info }}"
             - name: MCP_READONLY_URL
               value: "http://{{ .Release.Name }}-mcp-readonly:{{ .Values.mcpReadonly.port }}/mcp"
+            - name: MCP_READWRITE_URL
+              value: "http://{{ .Release.Name }}-mcp-readwrite:{{ .Values.mcpReadwrite.port }}/mcp"
             - name: RHOKP_MCP_URL
               value: "http://{{ .Release.Name }}-okp-mcp:{{ .Values.okpMcp.port }}/mcp"
             - name: SKILLS_DIRECTORY
