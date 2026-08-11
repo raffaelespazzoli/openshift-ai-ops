@@ -433,14 +433,15 @@ async def adjust_policy(
 
     pool = await get_pool()
     async with pool.acquire() as conn:
-        await persist_policy_adjustment(conn, body, actor=user.username)
-        await write_audit_log(
-            conn,
-            actor=user.username,
-            action="api.policy.adjusted",
-            target_resource="policy_matrix",
-            detail=body.model_dump(mode="json"),
-        )
+        async with conn.transaction():
+            await persist_policy_adjustment(conn, body, actor=user.username)
+            await write_audit_log(
+                conn,
+                actor=user.username,
+                action="api.policy.adjusted",
+                target_resource="policy_matrix",
+                detail=body.model_dump(mode="json"),
+            )
 
     meta = ApiMeta(request_id=request_id_var.get() or "")
     return ApiResponse(

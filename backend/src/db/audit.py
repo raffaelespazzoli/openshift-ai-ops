@@ -27,8 +27,9 @@ async def write_audit_log(
 ) -> None:
     """Write an audit record to the audit_log table.
 
-    This function must never raise — callers fire-and-forget.
-    Errors are logged but swallowed.
+    When *conn* is a Pool, errors are logged and swallowed (fire-and-forget).
+    When *conn* is a Connection (transactional caller), errors re-raise so the
+    enclosing transaction can roll back.
     """
     try:
         now = datetime.now(timezone.utc)
@@ -44,6 +45,8 @@ async def write_audit_log(
             now,
         )
     except Exception:
+        if isinstance(conn, asyncpg.Connection):
+            raise
         logger.exception(
             "Failed to write audit log — swallowing error",
             extra={
