@@ -13,7 +13,7 @@ import uuid
 from ..config.execution_settings import ExecutionSettings, get_execution_settings
 from ..config.logging import Component, get_logger
 from ..db.connection import get_pool
-from ..db.execution import persist_execution_log, persist_outcome_result
+from ..db.execution import load_execution_log, persist_execution_log, persist_outcome_result
 from ..db.incidents import transition_incident_state
 from ..db.remediation_lock import acquire_remediation_lock, release_remediation_lock
 from ..models.diagnosis import ImmutableDiagnosisArtifact
@@ -65,6 +65,7 @@ async def _dispatch_one(config: ExecutionSettings) -> None:
         )
 
     if row is None:
+        await _recover_stranded_observing(config)
         return
 
     incident_id = row["id"]
@@ -182,16 +183,14 @@ async def _run_execution_cycle(
     mcp_client = ReadWriteMCPClient()
     execution_log = await execute_remediation(plan, mcp_client)
 
+    new_state = transition(IncidentState.EXECUTING, IncidentState.OBSERVING)
     async with pool.acquire() as conn:
         async with conn.transaction():
             await persist_execution_log(conn, execution_log)
-
-    new_state = transition(IncidentState.EXECUTING, IncidentState.OBSERVING)
-    async with pool.acquire() as conn:
-        await transition_incident_state(
-            conn, incident_id,
-            IncidentState.EXECUTING.value, new_state.value,
-        )
+            await transition_incident_state(
+                conn, incident_id,
+                IncidentState.EXECUTING.value, new_state.value,
+            )
 
     await _emit_execution_event(incident_id, "execution", "completed")
 
@@ -227,6 +226,96 @@ async def _run_execution_cycle(
     await pipeline_audit_log(
         incident_id=str(incident_id),
         stage_name="observation",
+        state_before="observing",
+        state_after=final_state.value,
+        extra_detail={
+            "outcome_confidence": outcome.outcome_confidence,
+            "resolution_method": outcome.resolution_method,
+        },
+    )
+
+    if outcome.alert_resolved:
+        asyncio.create_task(_background_refire_monitor(incident_id))
+
+    if config.cooldown_seconds > 0:
+        await asyncio.sleep(config.cooldown_seconds)
+
+
+async def _recover_stranded_observing(config: ExecutionSettings) -> None:
+    """Resume observation for incidents stranded in 'observing' state.
+
+    An incident can get stranded if the pod crashes after transitioning
+    to 'observing' but before persisting the outcome result.
+    """
+    import json as _json
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        stranded = await conn.fetchrow(
+            """
+            SELECT i.id, el.id AS exec_log_id
+            FROM incidents i
+            JOIN execution_logs el ON el.incident_id = i.id
+            LEFT JOIN outcome_results ores ON ores.incident_id = i.id
+            WHERE i.state = 'observing' AND ores.id IS NULL
+            ORDER BY i.updated_at ASC
+            LIMIT 1
+            """
+        )
+
+    if stranded is None:
+        return
+
+    incident_id = stranded["id"]
+    logger.info(
+        "Recovering stranded observing incident",
+        extra={"incident_id": str(incident_id)},
+    )
+
+    async with pool.acquire() as conn:
+        execution_log = await load_execution_log(conn, incident_id)
+        artifact_row = await conn.fetchrow(
+            "SELECT diagnosis FROM immutable_diagnoses WHERE incident_id = $1",
+            incident_id,
+        )
+
+    if execution_log is None or artifact_row is None:
+        logger.error(
+            "Cannot recover stranded incident — missing execution log or artifact",
+            extra={"incident_id": str(incident_id)},
+        )
+        return
+
+    diagnosis_data = artifact_row["diagnosis"]
+    if isinstance(diagnosis_data, str):
+        diagnosis_data = _json.loads(diagnosis_data)
+    artifact = ImmutableDiagnosisArtifact.model_validate(diagnosis_data)
+
+    outcome = await observe_outcome(incident_id, artifact, execution_log)
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await persist_outcome_result(conn, outcome)
+
+    if outcome.alert_resolved:
+        final_state = transition(IncidentState.OBSERVING, IncidentState.RESOLVED)
+    else:
+        final_state = transition(IncidentState.OBSERVING, IncidentState.FAILED)
+
+    async with pool.acquire() as conn:
+        await transition_incident_state(
+            conn, incident_id,
+            IncidentState.OBSERVING.value, final_state.value,
+        )
+
+    await _emit_execution_event(
+        incident_id, "observation",
+        "resolved" if outcome.alert_resolved else "failed",
+    )
+
+    await pipeline_audit_log(
+        incident_id=str(incident_id),
+        stage_name="observation_recovery",
         state_before="observing",
         state_after=final_state.value,
         extra_detail={

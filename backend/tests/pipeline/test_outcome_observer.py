@@ -174,7 +174,7 @@ class TestOutcomeWebhookResolved:
                 raise StopIteration
 
         settings = ExecutionSettings(
-            observation_timeout_seconds=0,
+            observation_timeout_seconds=1,
             cooldown_seconds=0,
             refire_window_seconds=0,
             lock_poll_interval_seconds=1,
@@ -217,7 +217,7 @@ class TestOutcomeTimeout:
         mock_pool.acquire = lambda: _AsyncCtx(mock_conn)
 
         settings = ExecutionSettings(
-            observation_timeout_seconds=0,
+            observation_timeout_seconds=1,
             cooldown_seconds=0,
             refire_window_seconds=0,
             lock_poll_interval_seconds=1,
