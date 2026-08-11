@@ -161,14 +161,12 @@ class TestDryRunPartialFail:
 
 class TestDryRunRBACDenied:
     @pytest.mark.unit
-    async def test_rbac_denied_overall_false(self):
-        async def mock_query(tool_name, arguments, **kwargs):
-            if tool_name == "get_resources" and arguments.get("kind") == "SelfSubjectAccessReview":
-                return "allowed: false — denied: insufficient permissions"
-            return "ok"
-
+    async def test_rbac_denied_via_dry_run_403(self):
+        """RBAC failures surface as dry-run=server 403 errors."""
         mock_client = AsyncMock()
-        mock_client.query = mock_query
+        mock_client.query = AsyncMock(
+            side_effect=RuntimeError("403 Forbidden: insufficient permissions")
+        )
 
         plan = _make_plan()
         artifact = _make_artifact(plan.incident_id)

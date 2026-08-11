@@ -148,8 +148,6 @@ async def dry_run_node(state: RemediationState) -> dict:
         },
     )
 
-    await _emit_stage_sse(incident_id, "dry_run", "complete")
-
     return {
         "dry_run_result": dry_run_result.model_dump(mode="json"),
         "stage": "dry_run_complete",
@@ -182,9 +180,6 @@ async def policy_gate_node(state: RemediationState) -> dict:
             "reasoning": decision.reasoning,
         },
     )
-
-    status = "approved" if decision.auto_execution_approved else "denied"
-    await _emit_stage_sse(incident_id, "policy_gate", status)
 
     return {
         "policy_decision": decision.model_dump(mode="json"),

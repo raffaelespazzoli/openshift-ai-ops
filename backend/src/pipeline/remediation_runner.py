@@ -138,6 +138,13 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
             )
         await _emit_remediation_event(incident_id, "remediation_plan", "planned")
 
+        if final_state.get("dry_run_result"):
+            dr = DryRunResult.model_validate(final_state["dry_run_result"])
+            await _emit_remediation_event(
+                incident_id, "dry_run", "complete",
+                payload={"overall_passed": dr.overall_passed},
+            )
+
         decision_dict = final_state.get("policy_decision")
         if decision_dict:
             decision = PolicyDecision.model_validate(decision_dict)
@@ -273,13 +280,24 @@ async def _handle_policy_decision(
     else:
         new_state = transition(current, IncidentState.AWAITING_APPROVAL)
 
-    await conn.execute(
+    result = await conn.execute(
         "UPDATE incidents SET state = $1, updated_at = NOW() "
         "WHERE id = $2 AND state = $3",
         new_state.value,
         incident_id,
         current_val,
     )
+
+    if result == "UPDATE 0":
+        logger.warning(
+            "Policy decision state transition failed — concurrent modification",
+            extra={
+                "incident_id": str(incident_id),
+                "expected_state": current_val,
+                "target_state": new_state.value,
+            },
+        )
+        return
 
     from ..db.audit import write_audit_log
 
