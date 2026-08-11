@@ -68,10 +68,6 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
         thread_id = f"remediation-{incident_id}"
         config = {"configurable": {"thread_id": thread_id}}
 
-        await _emit_remediation_event(
-            incident_id, "skeptic_validation", "validating"
-        )
-
         final_state = await graph.ainvoke(initial_state, config=config)
 
         plan_dict = final_state.get("remediation_plan")
@@ -86,11 +82,17 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
 
         plan = RemediationPlan.model_validate(plan_dict)
 
-        async with pool.acquire() as conn:
-            await persist_remediation_plan(conn, plan)
-            await _persist_skeptic_artifacts(
-                conn, incident_id, final_state
+        if final_state.get("skeptic_verdict"):
+            await _emit_remediation_event(
+                incident_id, "skeptic_validation", "validating"
             )
+
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                await persist_remediation_plan(conn, plan)
+                await _persist_skeptic_artifacts(
+                    conn, incident_id, final_state
+                )
 
         await _emit_remediation_event(
             incident_id, "skeptic_validation", "validated"

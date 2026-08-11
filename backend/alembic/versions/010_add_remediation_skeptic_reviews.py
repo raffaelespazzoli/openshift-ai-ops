@@ -27,7 +27,8 @@ def upgrade() -> None:
             challenge JSONB NOT NULL,
             response JSONB NOT NULL,
             verdict JSONB,
-            created_at TIMESTAMPTZ DEFAULT NOW()
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE(incident_id, round_number)
         )
     """)
 
