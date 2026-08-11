@@ -4,11 +4,12 @@ Tests approve, reject, approval context retrieval, awaiting list,
 minimum review time enforcement, and policy adjustment.
 """
 
+import asyncio
 import json
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import asyncpg
 import pytest
@@ -390,13 +391,69 @@ class TestApproveRejectFullFlow:
         incident_id, _, _ = awaiting_incident
         await async_client.post(f"/api/v1/incidents/{incident_id}/approve")
 
+        await asyncio.sleep(0.1)
+
+        expected_path = f"/api/v1/incidents/{incident_id}/approve"
         conn = await asyncpg.connect(db_url)
         try:
             row = await conn.fetchrow(
-                "SELECT * FROM audit_log WHERE action = 'api.remediation.approved' AND target_resource = $1",
-                str(incident_id),
+                "SELECT * FROM audit_log WHERE action LIKE 'POST%approve%' ORDER BY created_at DESC LIMIT 1",
             )
             assert row is not None
             assert row["actor"] == "dev-user"
+            assert row["target_resource"] == expected_path
         finally:
             await conn.close()
+
+
+class TestSSEEmission:
+    """Verify SSE events are emitted on approve/reject."""
+
+    async def test_approve_emits_sse_events(self, async_client, awaiting_incident):
+        incident_id, _, _ = awaiting_incident
+        mock_bus = AsyncMock()
+
+        with patch("src.api.approval.get_event_bus", return_value=mock_bus):
+            resp = await async_client.post(f"/api/v1/incidents/{incident_id}/approve")
+
+        assert resp.status_code == 200
+        assert mock_bus.emit.call_count == 2
+
+        first_call = mock_bus.emit.call_args_list[0]
+        assert first_call[0][0] == "incident.state_changed"
+
+        second_call = mock_bus.emit.call_args_list[1]
+        assert second_call[0][0] == "incident.approval_decision"
+
+    async def test_reject_emits_sse_events(self, async_client, awaiting_incident):
+        incident_id, _, _ = awaiting_incident
+        mock_bus = AsyncMock()
+
+        with patch("src.api.approval.get_event_bus", return_value=mock_bus):
+            resp = await async_client.post(
+                f"/api/v1/incidents/{incident_id}/reject",
+                json={"reason": "Not safe"},
+            )
+
+        assert resp.status_code == 200
+        assert mock_bus.emit.call_count == 2
+
+        first_call = mock_bus.emit.call_args_list[0]
+        assert first_call[0][0] == "incident.state_changed"
+
+        second_call = mock_bus.emit.call_args_list[1]
+        assert second_call[0][0] == "incident.approval_decision"
+
+    async def test_approve_succeeds_even_if_sse_fails(
+        self, async_client, awaiting_incident
+    ):
+        incident_id, _, _ = awaiting_incident
+        mock_bus = AsyncMock()
+        mock_bus.emit.side_effect = RuntimeError("SSE broker down")
+
+        with patch("src.api.approval.get_event_bus", return_value=mock_bus):
+            resp = await async_client.post(f"/api/v1/incidents/{incident_id}/approve")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data"]["status"] == "approved"

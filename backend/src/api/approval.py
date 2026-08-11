@@ -271,24 +271,30 @@ async def approve_remediation(
                 actor=user.username,
             )
 
-    bus = get_event_bus()
-    await bus.emit(
-        EventNames.INCIDENT_STATE_CHANGED,
-        SSEEventData(
-            incident_id=incident_id,
-            stage="approval",
-            state="executing",
-        ),
-    )
-    await bus.emit(
-        EventNames.INCIDENT_APPROVAL_DECISION,
-        SSEEventData(
-            incident_id=incident_id,
-            stage="approval",
-            state="executing",
-            payload={"action": "approved", "actor": user.username},
-        ),
-    )
+    try:
+        bus = get_event_bus()
+        await bus.emit(
+            EventNames.INCIDENT_STATE_CHANGED,
+            SSEEventData(
+                incident_id=incident_id,
+                stage="approval",
+                state="executing",
+            ),
+        )
+        await bus.emit(
+            EventNames.INCIDENT_APPROVAL_DECISION,
+            SSEEventData(
+                incident_id=incident_id,
+                stage="approval",
+                state="executing",
+                payload={"action": "approved", "actor": user.username},
+            ),
+        )
+    except Exception:
+        logger.warning(
+            "Failed to emit SSE event after approval",
+            extra={"incident_id": str(incident_id)},
+        )
 
     meta = ApiMeta(request_id=request_id_var.get() or "")
     return ApiResponse(
@@ -377,28 +383,34 @@ async def reject_remediation(
                 reason=body.reason,
             )
 
-    bus = get_event_bus()
-    await bus.emit(
-        EventNames.INCIDENT_STATE_CHANGED,
-        SSEEventData(
-            incident_id=incident_id,
-            stage="approval",
-            state="failed",
-        ),
-    )
-    await bus.emit(
-        EventNames.INCIDENT_APPROVAL_DECISION,
-        SSEEventData(
-            incident_id=incident_id,
-            stage="approval",
-            state="failed",
-            payload={
-                "action": "rejected",
-                "actor": user.username,
-                "reason": body.reason,
-            },
-        ),
-    )
+    try:
+        bus = get_event_bus()
+        await bus.emit(
+            EventNames.INCIDENT_STATE_CHANGED,
+            SSEEventData(
+                incident_id=incident_id,
+                stage="approval",
+                state="failed",
+            ),
+        )
+        await bus.emit(
+            EventNames.INCIDENT_APPROVAL_DECISION,
+            SSEEventData(
+                incident_id=incident_id,
+                stage="approval",
+                state="failed",
+                payload={
+                    "action": "rejected",
+                    "actor": user.username,
+                    "reason": body.reason,
+                },
+            ),
+        )
+    except Exception:
+        logger.warning(
+            "Failed to emit SSE event after rejection",
+            extra={"incident_id": str(incident_id)},
+        )
 
     meta = ApiMeta(request_id=request_id_var.get() or "")
     return ApiResponse(
