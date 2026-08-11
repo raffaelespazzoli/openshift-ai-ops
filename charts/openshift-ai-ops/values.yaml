@@ -114,6 +114,12 @@ approval:
   minimumReviewSecondsNode: 60
   minimumReviewSecondsCluster: 60
 
+execution:
+  observationTimeoutSeconds: 300
+  cooldownSeconds: 60
+  refireWindowSeconds: 600
+  lockPollIntervalSeconds: 5
+
 policyGate:
   severityAutoApprove: ""
   blastRadiusAutoApprove: ""

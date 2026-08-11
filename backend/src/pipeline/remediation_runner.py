@@ -67,6 +67,9 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
             "skeptic_verdict": None,
             "dry_run_result": None,
             "policy_decision": None,
+            "freshness_result": None,
+            "execution_log": None,
+            "outcome_result": None,
             "alert_severity": alert_severity,
             "stage": "entered",
         }

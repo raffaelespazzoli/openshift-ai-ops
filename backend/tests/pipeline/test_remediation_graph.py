@@ -33,8 +33,12 @@ from src.pipeline.remediation_graph import (
     RemediationState,
     build_remediation_graph,
     dry_run_node,
+    execute_node,
+    freshness_gate_node,
+    observe_node,
     plan_node,
     policy_gate_node,
+    should_execute,
     skeptic_validation_node,
 )
 
@@ -123,6 +127,9 @@ def _make_initial_state(incident_id=None) -> RemediationState:
         "skeptic_verdict": None,
         "dry_run_result": None,
         "policy_decision": None,
+        "freshness_result": None,
+        "execution_log": None,
+        "outcome_result": None,
         "alert_severity": "warning",
         "stage": "entered",
     }
@@ -621,3 +628,164 @@ class TestFullGraphWithPolicyGate:
 
         pd = PolicyDecision.model_validate(final_state["policy_decision"])
         assert pd.auto_execution_approved is False
+
+
+class TestFreshnessGateNode:
+    """Freshness gate node checks alert status."""
+
+    @pytest.mark.unit
+    async def test_freshness_gate_fresh(self):
+        iid = uuid.uuid4()
+        state = _make_initial_state(str(iid))
+
+        mock_conn = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=0)
+
+        mock_pool = AsyncMock()
+        mock_pool.acquire = lambda: _AsyncCtx(mock_conn)
+
+        with (
+            patch(
+                "src.pipeline.remediation_graph.get_pool",
+                new_callable=AsyncMock,
+                return_value=mock_pool,
+            ),
+            patch(
+                "src.pipeline.remediation_graph._emit_stage_sse",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await freshness_gate_node(state)
+
+        assert result["freshness_result"]["is_fresh"] is True
+        assert result["stage"] == "freshness_checked"
+
+    @pytest.mark.unit
+    async def test_freshness_gate_stale(self):
+        iid = uuid.uuid4()
+        state = _make_initial_state(str(iid))
+
+        mock_conn = AsyncMock()
+        mock_conn.fetchval = AsyncMock(return_value=1)
+
+        mock_pool = AsyncMock()
+        mock_pool.acquire = lambda: _AsyncCtx(mock_conn)
+
+        with (
+            patch(
+                "src.pipeline.remediation_graph.get_pool",
+                new_callable=AsyncMock,
+                return_value=mock_pool,
+            ),
+            patch(
+                "src.pipeline.remediation_graph._emit_stage_sse",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await freshness_gate_node(state)
+
+        assert result["freshness_result"]["is_fresh"] is False
+
+
+class TestShouldExecuteConditional:
+    """Conditional edge function: should_execute."""
+
+    @pytest.mark.unit
+    def test_fresh_returns_execute(self):
+        state = _make_initial_state()
+        state["freshness_result"] = {"is_fresh": True}
+        assert should_execute(state) == "execute"
+
+    @pytest.mark.unit
+    def test_stale_returns_end_stale(self):
+        state = _make_initial_state()
+        state["freshness_result"] = {"is_fresh": False}
+        assert should_execute(state) == "end_stale"
+
+    @pytest.mark.unit
+    def test_missing_freshness_result_returns_end_stale(self):
+        state = _make_initial_state()
+        state["freshness_result"] = None
+        assert should_execute(state) == "end_stale"
+
+
+class TestExecuteNode:
+    """Execute node invokes the execution engine."""
+
+    @pytest.mark.unit
+    async def test_execute_node_produces_log(self):
+        iid = uuid.uuid4()
+        plan = _make_plan(incident_id=iid)
+        state = _make_initial_state(str(iid))
+        state["remediation_plan"] = plan.model_dump(mode="json")
+
+        from src.models.execution import ExecutionLog, ExecutionStepLog
+        from datetime import timezone
+
+        mock_log = ExecutionLog(
+            incident_id=iid,
+            plan_id=plan.id,
+            steps=[
+                ExecutionStepLog(
+                    step_order=1,
+                    command="kubectl apply",
+                    started_at=datetime.now(timezone.utc),
+                    completed_at=datetime.now(timezone.utc),
+                    success=True,
+                    output="applied",
+                )
+            ],
+            status="completed",
+        )
+
+        with (
+            patch(
+                "src.pipeline.execution_engine.execute_remediation",
+                new_callable=AsyncMock,
+                return_value=mock_log,
+            ),
+            patch(
+                "src.pipeline.remediation_graph._emit_stage_sse",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await execute_node(state)
+
+        assert "execution_log" in result
+        assert result["execution_log"]["status"] == "completed"
+        assert result["stage"] == "executed"
+
+
+class TestGraphHasNewNodes:
+    """Graph includes freshness_gate, execute, observe nodes."""
+
+    @pytest.mark.unit
+    def test_graph_has_freshness_gate_node(self):
+        builder = build_remediation_graph()
+        graph = builder.compile()
+        assert "freshness_gate" in graph.nodes
+
+    @pytest.mark.unit
+    def test_graph_has_execute_node(self):
+        builder = build_remediation_graph()
+        graph = builder.compile()
+        assert "execute" in graph.nodes
+
+    @pytest.mark.unit
+    def test_graph_has_observe_node(self):
+        builder = build_remediation_graph()
+        graph = builder.compile()
+        assert "observe" in graph.nodes
+
+
+class _AsyncCtx:
+    """Helper async context manager for mocking pool.acquire()."""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    async def __aenter__(self):
+        return self._conn
+
+    async def __aexit__(self, *args):
+        pass

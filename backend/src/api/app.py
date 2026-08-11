@@ -26,6 +26,7 @@ from .event_bus import get_event_bus
 from .events import router as events_router
 from .health import router as health_router
 from .incidents import router as incidents_router
+from .rollback import router as rollback_router
 from .webhooks import router as webhooks_router
 
 setup_logging()
@@ -144,9 +145,16 @@ async def lifespan(app: FastAPI):
     _init_skill_registry()
     sealing_task = asyncio.create_task(_background_sealing_sweep())
     dispatcher_task = asyncio.create_task(run_dispatcher())
+    from ..pipeline.execution_dispatcher import run_execution_dispatcher
+    execution_dispatcher_task = asyncio.create_task(run_execution_dispatcher())
     yield
+    execution_dispatcher_task.cancel()
     dispatcher_task.cancel()
     sealing_task.cancel()
+    try:
+        await execution_dispatcher_task
+    except asyncio.CancelledError:
+        pass
     try:
         await dispatcher_task
     except asyncio.CancelledError:
@@ -248,6 +256,7 @@ def create_app() -> FastAPI:
     app.include_router(incidents_router)
     app.include_router(events_router)
     app.include_router(approval_router)
+    app.include_router(rollback_router)
 
     return app
 

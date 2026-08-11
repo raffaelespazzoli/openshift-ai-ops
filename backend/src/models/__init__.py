@@ -49,6 +49,13 @@ from .policy_gate import (
     PolicyMatrix,
 )
 from .case_record import CaseRecordSummary
+from .execution import (
+    ExecutionLog,
+    ExecutionStepLog,
+    OutcomeConfidence,
+    OutcomeResult,
+    RollbackRecord,
+)
 from .knowledge import CompletenessResult, RunbookChunk
 from .root_cause_event import CorrelationEvidence, CorrelationLayer, RootCauseEvent
 from .state_machine import (
@@ -90,10 +97,14 @@ __all__ = [
     "EvidenceArtifact",
     "EvidenceGap",
     "EvidenceSource",
+    "ExecutionLog",
+    "ExecutionStepLog",
     "ImmutableDiagnosisArtifact",
     "Incident",
     "IncidentState",
     "InvalidTransitionError",
+    "OutcomeConfidence",
+    "OutcomeResult",
     "PolicyDecision",
     "PolicyDimension",
     "PolicyMatrix",
@@ -105,6 +116,7 @@ __all__ = [
     "RemediationSkepticVerdict",
     "RemediationStep",
     "RiskLevel",
+    "RollbackRecord",
     "ROOT_CAUSE_TAXONOMY",
     "RootCauseEvent",
     "RunbookChunk",

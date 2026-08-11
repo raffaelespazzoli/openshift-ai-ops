@@ -118,6 +118,14 @@ spec:
               value: "{{ .Values.policyGate.blastRadiusAutoApprove }}"
             - name: POLICY_CONFIDENCE_MINIMUM
               value: "{{ .Values.policyGate.confidenceMinimum }}"
+            - name: EXECUTION_OBSERVATION_TIMEOUT
+              value: "{{ .Values.execution.observationTimeoutSeconds }}"
+            - name: EXECUTION_COOLDOWN_SECONDS
+              value: "{{ .Values.execution.cooldownSeconds }}"
+            - name: EXECUTION_REFIRE_WINDOW
+              value: "{{ .Values.execution.refireWindowSeconds }}"
+            - name: EXECUTION_LOCK_POLL_INTERVAL
+              value: "{{ .Values.execution.lockPollIntervalSeconds }}"
             - name: LLM_ENDPOINT
               value: "{{ .Values.llm.endpoint }}"
             - name: LLM_MODEL

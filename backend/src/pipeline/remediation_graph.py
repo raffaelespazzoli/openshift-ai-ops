@@ -1,6 +1,7 @@
-"""LangGraph StateGraph definition for the remediation pipeline (AD-1, Story 3.1/3.2/3.3).
+"""LangGraph StateGraph definition for the remediation pipeline (AD-1, Story 3.1/3.2/3.3/3.5).
 
-Graph structure: entry → plan → skeptic_validation → dry_run → policy_gate → END
+Graph structure: entry → plan → skeptic_validation → dry_run → policy_gate
+                       → freshness_gate → {execute | end_stale} → observe → END
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from langgraph.graph import END, StateGraph
 from ..config.logging import Component, get_logger
 from ..models.diagnosis import ImmutableDiagnosisArtifact
 from ..models.events import EventNames, SSEEventData
+from ..models.execution import ExecutionLog
 from ..models.policy_gate import DryRunResult
 from ..models.remediation import RemediationPlan
 from .audit_hook import pipeline_audit_log
@@ -30,6 +32,9 @@ class RemediationState(TypedDict):
     skeptic_verdict: dict | None
     dry_run_result: dict | None
     policy_decision: dict | None
+    freshness_result: dict | None
+    execution_log: dict | None
+    outcome_result: dict | None
     alert_severity: str | None
     stage: str
 
@@ -189,19 +194,111 @@ async def policy_gate_node(state: RemediationState) -> dict:
 def build_remediation_graph() -> StateGraph:
     """Build the LangGraph StateGraph for remediation (not yet compiled).
 
-    Graph structure (Story 3.3): entry → plan → skeptic_validation → dry_run → policy_gate → END
+    Graph structure (Story 3.5 — FINAL for Epic 3):
+      entry → plan → skeptic_validation → dry_run → policy_gate
+            → freshness_gate → {execute | end_stale} → observe → END
     """
     builder = StateGraph(RemediationState)
     builder.add_node("plan", plan_node)
     builder.add_node("skeptic_validation", skeptic_validation_node)
     builder.add_node("dry_run", dry_run_node)
     builder.add_node("policy_gate", policy_gate_node)
+    builder.add_node("freshness_gate", freshness_gate_node)
+    builder.add_node("execute", execute_node)
+    builder.add_node("observe", observe_node)
     builder.set_entry_point("plan")
     builder.add_edge("plan", "skeptic_validation")
     builder.add_edge("skeptic_validation", "dry_run")
     builder.add_edge("dry_run", "policy_gate")
-    builder.add_edge("policy_gate", END)
+    builder.add_edge("policy_gate", "freshness_gate")
+    builder.add_conditional_edges(
+        "freshness_gate",
+        should_execute,
+        {"execute": "execute", "end_stale": END},
+    )
+    builder.add_edge("execute", "observe")
+    builder.add_edge("observe", END)
     return builder
+
+
+async def freshness_gate_node(state: RemediationState) -> dict:
+    """Freshness gate — verifies alert still firing before execution (AD-16)."""
+    from .freshness_gate import check_freshness
+
+    incident_id = uuid.UUID(state["incident_id"])
+    artifact = ImmutableDiagnosisArtifact.model_validate(state["immutable_artifact"])
+
+    from ..db.connection import get_pool
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await check_freshness(incident_id, artifact, conn)
+
+    await _emit_stage_sse(incident_id, "freshness_gate", "checked")
+
+    return {
+        "freshness_result": {
+            "is_fresh": result.is_fresh,
+            "alert_still_firing": result.alert_still_firing,
+            "diagnosis_still_relevant": result.diagnosis_still_relevant,
+            "reason": result.reason,
+        },
+        "stage": "freshness_checked",
+    }
+
+
+async def execute_node(state: RemediationState) -> dict:
+    """Execute the remediation plan via read-write MCP (Story 3.5)."""
+    from .execution_engine import execute_remediation
+    from .mcp_readwrite_client import ReadWriteMCPClient
+
+    incident_id = state["incident_id"]
+    logger.info("Execute node started", extra={"incident_id": incident_id})
+
+    await _emit_stage_sse(incident_id, "execution", "running")
+
+    plan = RemediationPlan.model_validate(state["remediation_plan"])
+    mcp_client = ReadWriteMCPClient()
+
+    execution_log = await execute_remediation(plan, mcp_client)
+
+    await _emit_stage_sse(incident_id, "execution", "completed")
+
+    return {
+        "execution_log": execution_log.model_dump(mode="json"),
+        "stage": "executed",
+    }
+
+
+async def observe_node(state: RemediationState) -> dict:
+    """Observe remediation outcome (Story 3.5)."""
+    from .outcome_observer import observe_outcome
+
+    incident_id = uuid.UUID(state["incident_id"])
+    artifact = ImmutableDiagnosisArtifact.model_validate(state["immutable_artifact"])
+    execution_log = ExecutionLog.model_validate(state["execution_log"])
+
+    await _emit_stage_sse(state["incident_id"], "observation", "monitoring")
+
+    outcome = await observe_outcome(incident_id, artifact, execution_log)
+
+    await _emit_stage_sse(
+        state["incident_id"], "observation",
+        "resolved" if outcome.alert_resolved else "failed",
+    )
+
+    return {
+        "outcome_result": outcome.model_dump(mode="json"),
+        "stage": "observed",
+    }
+
+
+def should_execute(state: RemediationState) -> str:
+    """Conditional edge: skip execution if freshness gate fails."""
+    freshness = state.get("freshness_result", {})
+    if freshness and freshness.get("is_fresh", False):
+        return "execute"
+    return "end_stale"
 
 
 async def _emit_skeptic_sse(incident_id: str, state: str) -> None:
