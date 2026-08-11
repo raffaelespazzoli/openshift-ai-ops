@@ -1,14 +1,10 @@
-"""Remediation pipeline runner (AD-1, Story 3.1/3.2).
+"""Remediation pipeline runner (AD-1, Story 3.1/3.2/3.3).
 
 Bridges the dispatcher to the remediation LangGraph graph.
 Loads the sealed ImmutableDiagnosisArtifact from the database,
-invokes the remediation graph, and persists the resulting plan
-and skeptic artifacts.
-
-On failure the runner transitions the incident to ``failed`` so it
-does not get stranded in ``planning``.  The success-path exit
-(``planning → awaiting_approval`` or ``planning → executing``) is
-handled by Story 3.3's policy gate.
+invokes the remediation graph, persists the resulting plan
+and skeptic artifacts, and transitions incident state based
+on the policy gate decision.
 """
 
 from __future__ import annotations
@@ -18,9 +14,11 @@ import uuid
 from ..config.logging import Component, get_logger
 from ..db import get_pool
 from ..db.checkpointer import get_checkpointer
+from ..db.policy_gate import persist_dry_run_result, persist_policy_decision
 from ..db.remediation import load_immutable_artifact, persist_remediation_plan
 from ..db.remediation_skeptic import persist_remediation_skeptic_record
 from ..models.events import EventNames, SSEEventData
+from ..models.policy_gate import DryRunResult, PolicyDecision
 from ..models.remediation import RemediationPlan
 from ..models.state_machine import IncidentState, transition
 from .audit_hook import pipeline_audit_log
@@ -63,6 +61,8 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
             "remediation_plan": None,
             "skeptic_challenge": None,
             "skeptic_verdict": None,
+            "dry_run_result": None,
+            "policy_decision": None,
             "stage": "entered",
         }
 
@@ -90,6 +90,9 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
                     await _persist_skeptic_artifacts(
                         conn, incident_id, final_state
                     )
+                    await _persist_policy_artifacts(
+                        conn, incident_id, final_state
+                    )
                     if final_state.get("skeptic_verdict"):
                         verdict = final_state["skeptic_verdict"]
                         await pipeline_audit_log(
@@ -108,6 +111,9 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
                             },
                             conn=conn,
                         )
+                    await _handle_policy_decision(
+                        conn, incident_id, final_state
+                    )
         except Exception:
             if final_state.get("skeptic_verdict"):
                 await _emit_remediation_event(
@@ -127,6 +133,20 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
                 },
             )
         await _emit_remediation_event(incident_id, "remediation_plan", "planned")
+
+        decision_dict = final_state.get("policy_decision")
+        if decision_dict:
+            decision = PolicyDecision.model_validate(decision_dict)
+            if decision.auto_execution_approved:
+                await _emit_remediation_event(
+                    incident_id, "policy_gate", "approved",
+                    payload={"reasoning": decision.reasoning},
+                )
+            else:
+                await _emit_remediation_event(
+                    incident_id, "policy_gate", "denied",
+                    payload={"reasoning": decision.reasoning},
+                )
 
         logger.info(
             "Remediation pipeline completed successfully",
@@ -202,6 +222,69 @@ async def _transition_to_failed(incident_id: uuid.UUID) -> None:
             "Could not transition incident to failed",
             extra={"incident_id": str(incident_id)},
         )
+
+
+async def _persist_policy_artifacts(
+    conn,
+    incident_id: uuid.UUID,
+    final_state: dict,
+) -> None:
+    """Persist dry-run result and policy decision from graph state."""
+    dry_run_dict = final_state.get("dry_run_result")
+    if dry_run_dict:
+        dr = DryRunResult.model_validate(dry_run_dict)
+        await persist_dry_run_result(conn, dr)
+
+    decision_dict = final_state.get("policy_decision")
+    if decision_dict:
+        pd = PolicyDecision.model_validate(decision_dict)
+        await persist_policy_decision(conn, pd)
+
+
+async def _handle_policy_decision(
+    conn,
+    incident_id: uuid.UUID,
+    graph_output: dict,
+) -> None:
+    """Transition incident state based on policy gate decision (AD-19)."""
+    decision_dict = graph_output.get("policy_decision")
+    if decision_dict is None:
+        return
+
+    decision = PolicyDecision.model_validate(decision_dict)
+
+    if decision.auto_execution_approved:
+        new_state = transition(IncidentState.DIAGNOSED, IncidentState.EXECUTING)
+    else:
+        new_state = transition(IncidentState.DIAGNOSED, IncidentState.AWAITING_APPROVAL)
+
+    await conn.execute(
+        "UPDATE incidents SET state = $1, updated_at = NOW() WHERE id = $2",
+        new_state.value,
+        incident_id,
+    )
+
+    from ..db.audit import write_audit_log
+
+    await write_audit_log(
+        conn,
+        actor="pipeline",
+        action="pipeline.policy_gate.decision",
+        target_resource=f"incident/{incident_id}",
+        detail={
+            "auto_approved": decision.auto_execution_approved,
+            "reasoning": decision.reasoning,
+        },
+    )
+
+    logger.info(
+        "Incident state transitioned based on policy decision",
+        extra={
+            "incident_id": str(incident_id),
+            "new_state": new_state.value,
+            "auto_approved": decision.auto_execution_approved,
+        },
+    )
 
 
 async def _emit_remediation_event(

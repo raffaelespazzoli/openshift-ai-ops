@@ -1,6 +1,10 @@
+---
+baseline_commit: ff71b46e1e558f55c8eb9acdff93ca2c93dde70a
+---
+
 # Story 3.3: Dry-Run Pre-Flight & Policy Gate
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -28,69 +32,69 @@ so that permission errors are caught early and only trusted remediations execute
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: DryRunResult and PolicyDecision models (AC: #1, #2, #3)
-  - [ ] 1.1 Create `backend/src/models/policy_gate.py` with `DryRunResult`, `DryRunStepResult`, `PolicyDimension`, `PolicyDecision`, `PolicyMatrix` models
-  - [ ] 1.2 `DryRunStepResult` fields: `step_order: int`, `command: str`, `success: bool`, `message: str`, `error_detail: str | None`
-  - [ ] 1.3 `DryRunResult` fields: `id: UUID`, `incident_id: UUID`, `plan_id: UUID`, `step_results: list[DryRunStepResult]`, `rbac_check_passed: bool`, `quota_check_passed: bool`, `admission_check_passed: bool`, `overall_passed: bool`, `created_at: datetime`
-  - [ ] 1.4 `PolicyDimension` fields: `name: str` (severity|blast_radius|confidence), `value: str | float`, `threshold: str | float`, `passed: bool`
-  - [ ] 1.5 `PolicyDecision` fields: `id: UUID`, `incident_id: UUID`, `plan_id: UUID`, `dimensions: list[PolicyDimension]`, `evidence_complete: bool`, `evidence_gaps_empty: bool`, `auto_execution_approved: bool`, `reasoning: str`, `created_at: datetime`
-  - [ ] 1.6 `PolicyMatrix` fields: `severity_thresholds: dict`, `blast_radius_thresholds: dict`, `confidence_threshold: float`
-  - [ ] 1.7 Export from `backend/src/models/__init__.py`
+- [x] Task 1: DryRunResult and PolicyDecision models (AC: #1, #2, #3)
+  - [x] 1.1 Create `backend/src/models/policy_gate.py` with `DryRunResult`, `DryRunStepResult`, `PolicyDimension`, `PolicyDecision`, `PolicyMatrix` models
+  - [x] 1.2 `DryRunStepResult` fields: `step_order: int`, `command: str`, `success: bool`, `message: str`, `error_detail: str | None`
+  - [x] 1.3 `DryRunResult` fields: `id: UUID`, `incident_id: UUID`, `plan_id: UUID`, `step_results: list[DryRunStepResult]`, `rbac_check_passed: bool`, `quota_check_passed: bool`, `admission_check_passed: bool`, `overall_passed: bool`, `created_at: datetime`
+  - [x] 1.4 `PolicyDimension` fields: `name: str` (severity|blast_radius|confidence), `value: str | float`, `threshold: str | float`, `passed: bool`
+  - [x] 1.5 `PolicyDecision` fields: `id: UUID`, `incident_id: UUID`, `plan_id: UUID`, `dimensions: list[PolicyDimension]`, `evidence_complete: bool`, `evidence_gaps_empty: bool`, `auto_execution_approved: bool`, `reasoning: str`, `created_at: datetime`
+  - [x] 1.6 `PolicyMatrix` fields: `severity_thresholds: dict`, `blast_radius_thresholds: dict`, `confidence_threshold: float`
+  - [x] 1.7 Export from `backend/src/models/__init__.py`
 
-- [ ] Task 2: Policy matrix configuration (AC: #3)
-  - [ ] 2.1 Create `backend/src/config/policy_settings.py` with `PolicyMatrixSettings` — resolves from env vars / Helm values
-  - [ ] 2.2 Default policy: all thresholds set to maximum (default-deny — all remediations require human approval)
-  - [ ] 2.3 Three configurable dimensions: severity auto-approve levels, blast-radius auto-approve levels, confidence minimum threshold
+- [x] Task 2: Policy matrix configuration (AC: #3)
+  - [x] 2.1 Create `backend/src/config/policy_settings.py` with `PolicyMatrixSettings` — resolves from env vars / Helm values
+  - [x] 2.2 Default policy: all thresholds set to maximum (default-deny — all remediations require human approval)
+  - [x] 2.3 Three configurable dimensions: severity auto-approve levels, blast-radius auto-approve levels, confidence minimum threshold
 
-- [ ] Task 3: Dry-run pre-flight executor (AC: #1, #2)
-  - [ ] 3.1 Create `backend/src/pipeline/dry_run.py` with `run_dry_run_preflight(plan: RemediationPlan, artifact: ImmutableDiagnosisArtifact) -> DryRunResult`
-  - [ ] 3.2 For each step with a command: simulate `--dry-run=server` via read-write MCP (`apply_resource` tool with dry-run flag)
-  - [ ] 3.3 RBAC check: verify ServiceAccount permissions via MCP `auth can-i` equivalent
-  - [ ] 3.4 Quota check: verify namespace quota via MCP resource query
-  - [ ] 3.5 Admission webhook check: exercised as part of dry-run=server (API server runs admission controllers on dry-run)
-  - [ ] 3.6 Aggregate results: `overall_passed = all step_results.success AND rbac_check_passed AND quota_check_passed AND admission_check_passed`
+- [x] Task 3: Dry-run pre-flight executor (AC: #1, #2)
+  - [x] 3.1 Create `backend/src/pipeline/dry_run.py` with `run_dry_run_preflight(plan: RemediationPlan, artifact: ImmutableDiagnosisArtifact) -> DryRunResult`
+  - [x] 3.2 For each step with a command: simulate `--dry-run=server` via read-write MCP (`apply_resource` tool with dry-run flag)
+  - [x] 3.3 RBAC check: verify ServiceAccount permissions via MCP `auth can-i` equivalent
+  - [x] 3.4 Quota check: verify namespace quota via MCP resource query
+  - [x] 3.5 Admission webhook check: exercised as part of dry-run=server (API server runs admission controllers on dry-run)
+  - [x] 3.6 Aggregate results: `overall_passed = all step_results.success AND rbac_check_passed AND quota_check_passed AND admission_check_passed`
 
-- [ ] Task 4: Policy gate evaluator (AC: #3, #4, #5, #6, #7)
-  - [ ] 4.1 Create `backend/src/pipeline/policy_gate.py` with `evaluate_policy_gate(plan: RemediationPlan, artifact: ImmutableDiagnosisArtifact, dry_run: DryRunResult) -> PolicyDecision`
-  - [ ] 4.2 Evidence completeness check: `len(artifact.evidence_gaps) == 0` (AD-15)
-  - [ ] 4.3 Causal chain evidence check: each element in `artifact.causal_chain` must have at least one corresponding `evidence` artifact
-  - [ ] 4.4 Three-dimensional matrix evaluation: severity × blast_radius × confidence
-  - [ ] 4.5 Auto-execution decision: ALL dimensions pass AND evidence complete AND dry-run passed
-  - [ ] 4.6 Load thresholds from `PolicyMatrixSettings`
+- [x] Task 4: Policy gate evaluator (AC: #3, #4, #5, #6, #7)
+  - [x] 4.1 Create `backend/src/pipeline/policy_gate.py` with `evaluate_policy_gate(plan: RemediationPlan, artifact: ImmutableDiagnosisArtifact, dry_run: DryRunResult) -> PolicyDecision`
+  - [x] 4.2 Evidence completeness check: `len(artifact.evidence_gaps) == 0` (AD-15)
+  - [x] 4.3 Causal chain evidence check: each element in `artifact.causal_chain` must have at least one corresponding `evidence` artifact
+  - [x] 4.4 Three-dimensional matrix evaluation: severity × blast_radius × confidence
+  - [x] 4.5 Auto-execution decision: ALL dimensions pass AND evidence complete AND dry-run passed
+  - [x] 4.6 Load thresholds from `PolicyMatrixSettings`
 
-- [ ] Task 5: Add dry_run and policy_gate nodes to remediation graph (AC: #1–#7)
-  - [ ] 5.1 Add `dry_run` node to `pipeline/remediation_graph.py` after `skeptic_validation`
-  - [ ] 5.2 Add `policy_gate` node after `dry_run`
-  - [ ] 5.3 Update graph structure: `entry → plan → skeptic_validation → dry_run → policy_gate → END`
-  - [ ] 5.4 Update `RemediationState` to include: `dry_run_result: dict | None`, `policy_decision: dict | None`
-  - [ ] 5.5 `policy_gate_node` is the terminal node — it renders the final decision and state transition
+- [x] Task 5: Add dry_run and policy_gate nodes to remediation graph (AC: #1–#7)
+  - [x] 5.1 Add `dry_run` node to `pipeline/remediation_graph.py` after `skeptic_validation`
+  - [x] 5.2 Add `policy_gate` node after `dry_run`
+  - [x] 5.3 Update graph structure: `entry → plan → skeptic_validation → dry_run → policy_gate → END`
+  - [x] 5.4 Update `RemediationState` to include: `dry_run_result: dict | None`, `policy_decision: dict | None`
+  - [x] 5.5 `policy_gate_node` is the terminal node — it renders the final decision and state transition
 
-- [ ] Task 6: State transitions in remediation runner (AC: #6, #7)
-  - [ ] 6.1 Update `pipeline/remediation_runner.py` to read `policy_decision` from graph output
-  - [ ] 6.2 If `auto_execution_approved`: transition incident `diagnosed → executing`
-  - [ ] 6.3 If NOT approved: transition incident `diagnosed → awaiting_approval`
-  - [ ] 6.4 Emit SSE events for dry-run start/complete and policy gate decision
+- [x] Task 6: State transitions in remediation runner (AC: #6, #7)
+  - [x] 6.1 Update `pipeline/remediation_runner.py` to read `policy_decision` from graph output
+  - [x] 6.2 If `auto_execution_approved`: transition incident `diagnosed → executing`
+  - [x] 6.3 If NOT approved: transition incident `diagnosed → awaiting_approval`
+  - [x] 6.4 Emit SSE events for dry-run start/complete and policy gate decision
 
-- [ ] Task 7: Persistence (AC: #2)
-  - [ ] 7.1 Create `backend/src/db/policy_gate.py` with `persist_dry_run_result()` and `persist_policy_decision()`
-  - [ ] 7.2 Create Alembic migration `010_add_dry_run_and_policy_gate.py` for `dry_run_results` and `policy_decisions` tables
-  - [ ] 7.3 `dry_run_results` table: `id UUID PK, incident_id UUID FK UNIQUE, plan_id UUID FK, step_results JSONB NOT NULL, rbac_check_passed BOOL, quota_check_passed BOOL, admission_check_passed BOOL, overall_passed BOOL, created_at TIMESTAMPTZ`
-  - [ ] 7.4 `policy_decisions` table: `id UUID PK, incident_id UUID FK UNIQUE, plan_id UUID FK, dimensions JSONB NOT NULL, evidence_complete BOOL, evidence_gaps_empty BOOL, auto_execution_approved BOOL, reasoning TEXT, created_at TIMESTAMPTZ`
-  - [ ] 7.5 Wire persistence into remediation runner (after graph completion, inside transaction)
+- [x] Task 7: Persistence (AC: #2)
+  - [x] 7.1 Create `backend/src/db/policy_gate.py` with `persist_dry_run_result()` and `persist_policy_decision()`
+  - [x] 7.2 Create Alembic migration `011_add_dry_run_and_policy_gate.py` for `dry_run_results` and `policy_decisions` tables
+  - [x] 7.3 `dry_run_results` table: `id UUID PK, incident_id UUID FK UNIQUE, plan_id UUID FK, step_results JSONB NOT NULL, rbac_check_passed BOOL, quota_check_passed BOOL, admission_check_passed BOOL, overall_passed BOOL, created_at TIMESTAMPTZ`
+  - [x] 7.4 `policy_decisions` table: `id UUID PK, incident_id UUID FK UNIQUE, plan_id UUID FK, dimensions JSONB NOT NULL, evidence_complete BOOL, evidence_gaps_empty BOOL, auto_execution_approved BOOL, reasoning TEXT, created_at TIMESTAMPTZ`
+  - [x] 7.5 Wire persistence into remediation runner (after graph completion, inside transaction)
 
-- [ ] Task 8: Helm chart — policy matrix config (AC: #3)
-  - [ ] 8.1 Add `policyGate` section to `values.yaml` with default-deny matrix configuration
-  - [ ] 8.2 Wire env vars from values into backend Deployment template
+- [x] Task 8: Helm chart — policy matrix config (AC: #3)
+  - [x] 8.1 Add `policyGate` section to `values.yaml` with default-deny matrix configuration
+  - [x] 8.2 Wire env vars from values into backend Deployment template
 
-- [ ] Task 9: Tests — unit (AC: #1–#7)
-  - [ ] 9.1 `tests/models/test_policy_gate.py` — DryRunResult, PolicyDimension, PolicyDecision validation
-  - [ ] 9.2 `tests/pipeline/test_dry_run.py` — dry-run executor with mocked MCP client (all pass, partial fail, RBAC denied)
-  - [ ] 9.3 `tests/pipeline/test_policy_gate.py` — policy evaluator: all dimensions pass → auto-approve; any fail → deny; evidence_gaps → deny; missing causal chain evidence → deny; default-deny config
-  - [ ] 9.4 `tests/pipeline/test_remediation_graph.py` (extend) — graph with all nodes: plan → skeptic → dry_run → policy_gate; state contains decision
+- [x] Task 9: Tests — unit (AC: #1–#7)
+  - [x] 9.1 `tests/models/test_policy_gate.py` — DryRunResult, PolicyDimension, PolicyDecision validation
+  - [x] 9.2 `tests/pipeline/test_dry_run.py` — dry-run executor with mocked MCP client (all pass, partial fail, RBAC denied)
+  - [x] 9.3 `tests/pipeline/test_policy_gate.py` — policy evaluator: all dimensions pass → auto-approve; any fail → deny; evidence_gaps → deny; missing causal chain evidence → deny; default-deny config
+  - [x] 9.4 `tests/pipeline/test_remediation_graph.py` (extend) — graph with all nodes: plan → skeptic → dry_run → policy_gate; state contains decision
 
-- [ ] Task 10: Tests — integration (AC: #2, #6, #7)
-  - [ ] 10.1 `tests/db/test_policy_gate.py` — persist_dry_run_result and persist_policy_decision roundtrip (testcontainers)
-  - [ ] 10.2 `tests/pipeline/test_remediation_runner.py` (extend) — runner transitions state based on policy decision; event bus receives events
+- [x] Task 10: Tests — integration (AC: #2, #6, #7)
+  - [x] 10.1 `tests/db/test_policy_gate.py` — persist_dry_run_result and persist_policy_decision roundtrip (testcontainers)
+  - [x] 10.2 `tests/pipeline/test_remediation_runner.py` (extend) — runner transitions state based on policy decision; event bus receives events
 
 ## Dev Notes
 
@@ -673,6 +677,64 @@ policyGate:
 - [Source: Story 3.2 spec] — Skeptic validation loop, graph structure post-skeptic, RemediationState
 - [Source: Story 2.4 spec] — ImmutableDiagnosisArtifact (evidence_gaps, confidence, causal_chain, evidence)
 - [Source: models/state_machine.py] — `transition()`, valid transitions: `diagnosed → awaiting_approval`, `diagnosed → executing`
+
+## Dev Agent Record
+
+### Agent Model Used
+
+Claude Opus 4.6 (via Cursor)
+
+### Debug Log References
+
+- No significant environment issues encountered. Python venv created in worktree; `xxd` not available on system (used `od` for hex generation instead).
+- Tests take ~2m17s for full unit suite (510 baseline + 37 new = 547 total). LangGraph graph compilation overhead dominates async test time.
+
+### Implementation Plan
+
+1. Models first (leaf modules) → Config → Pipeline logic → Graph integration → Runner updates → Persistence → Helm → Tests
+2. Red-green-refactor: tests written after each module, verified passing before moving to next task
+3. Existing graph tests updated to accommodate new nodes (validated → policy_decided final stage)
+
+### Completion Notes List
+
+- **Task 1**: Created `models/policy_gate.py` with 6 Pydantic/dataclass models. `PolicyDimensionName` uses `Literal` type for strict dimension name validation. Exported all models from `models/__init__.py`.
+- **Task 2**: Created `config/policy_settings.py` with `PolicyMatrixSettings` frozen dataclass. Default-deny: empty severity/blast_radius lists, confidence=1.0. Singleton pattern with `reset_policy_settings()` for testing.
+- **Task 3**: Created `pipeline/dry_run.py` with `run_dry_run_preflight()`. Validates each step via MCP `apply_resource` with dry-run flag. RBAC via `auth_check`, quota via `get_resources`. Informational steps (no command) auto-pass.
+- **Task 4**: Created `pipeline/policy_gate.py` with `evaluate_policy_gate()`. Pure deterministic logic — no LLM. Checks: evidence gaps (AD-15 hard block), causal chain coverage, severity × blast_radius × confidence matrix. Builds reasoning string.
+- **Task 5**: Updated `remediation_graph.py`: added `dry_run_result` and `policy_decision` to `RemediationState`, added `dry_run_node` and `policy_gate_node`, updated graph to `plan → skeptic → dry_run → policy_gate → END`. Refactored SSE emission to generic `_emit_stage_sse()`.
+- **Task 6**: Updated `remediation_runner.py`: reads policy decision from graph output, transitions incident state via canonical `transition()` function (AD-19). Auto-approved → `executing`, denied → `awaiting_approval`. Audit-logs the decision. Emits SSE events for dry-run and policy gate stages.
+- **Task 7**: Created `db/policy_gate.py` with `persist_dry_run_result()`, `persist_policy_decision()`, `load_dry_run_result()`, `load_policy_decision()`. Created migration `011_add_dry_run_and_policy_gate.py` with both tables, UNIQUE constraints on `incident_id`, and indexes.
+- **Task 8**: Added `policyGate` section to `values.yaml` with default-deny values. Wired `POLICY_SEVERITY_AUTO_APPROVE`, `POLICY_BLAST_RADIUS_AUTO_APPROVE`, `POLICY_CONFIDENCE_MINIMUM` env vars in deployment template.
+- **Task 9**: 37 new unit tests across 4 test files. Model validation, dry-run executor (all pass, partial fail, RBAC denied, quota exceeded, informational steps), policy gate evaluator (all pass, evidence gaps, causal chain, default deny, dry-run failed, per-dimension failures), graph compilation and full execution.
+- **Task 10**: DB integration tests for roundtrip persistence and UNIQUE constraint enforcement. Runner tests for state transitions (awaiting_approval on deny, executing on approve) and SSE event emission.
+
+## File List
+
+| File | Action | Description |
+|------|--------|-------------|
+| `backend/src/models/policy_gate.py` | NEW | DryRunResult, DryRunStepResult, PolicyDimension, PolicyDecision, PolicyMatrix models |
+| `backend/src/models/__init__.py` | MODIFIED | Export new policy gate models |
+| `backend/src/config/policy_settings.py` | NEW | PolicyMatrixSettings default-deny config from env vars |
+| `backend/src/pipeline/dry_run.py` | NEW | Dry-run pre-flight executor using read-write MCP |
+| `backend/src/pipeline/policy_gate.py` | NEW | Three-dimensional policy gate evaluator |
+| `backend/src/pipeline/remediation_graph.py` | MODIFIED | Added dry_run/policy_gate nodes, updated RemediationState, refactored SSE |
+| `backend/src/pipeline/remediation_runner.py` | MODIFIED | Policy decision handling, state transitions, persistence, SSE events |
+| `backend/src/db/policy_gate.py` | NEW | persist/load for dry_run_results and policy_decisions |
+| `backend/alembic/versions/011_add_dry_run_and_policy_gate.py` | NEW | Migration: dry_run_results and policy_decisions tables |
+| `charts/openshift-ai-ops/values.yaml` | MODIFIED | Added policyGate config section |
+| `charts/openshift-ai-ops/templates/deployment-backend.yaml` | MODIFIED | Added POLICY_* env vars |
+| `backend/tests/models/test_policy_gate.py` | NEW | Model validation tests (12 tests) |
+| `backend/tests/pipeline/test_dry_run.py` | NEW | Dry-run executor unit tests (6 tests) |
+| `backend/tests/pipeline/test_policy_gate.py` | NEW | Policy gate evaluator unit tests (9 tests) |
+| `backend/tests/pipeline/test_remediation_graph.py` | MODIFIED | Extended for dry_run + policy_gate nodes (10 new tests) |
+| `backend/tests/pipeline/test_remediation_runner.py` | MODIFIED | Extended for state transition tests (3 new tests) |
+| `backend/tests/db/test_policy_gate.py` | NEW | Persistence roundtrip + UNIQUE constraint tests |
+| `_bmad-output/implementation-artifacts/3-3-dry-run-pre-flight-and-policy-gate.md` | MODIFIED | Story status, tasks, dev agent record |
+| `_bmad-output/implementation-artifacts/sprint-status.yaml` | MODIFIED | Story 3.3 status → review |
+
+## Change Log
+
+- **2026-08-11**: Implemented Story 3.3 — Dry-Run Pre-Flight & Policy Gate. Added dry-run validation via MCP, three-dimensional policy matrix evaluator (severity × blast_radius × confidence), default-deny configuration, state transitions (diagnosed → executing/awaiting_approval), DB persistence, Alembic migration, Helm config, and comprehensive unit/integration tests. 547 unit tests pass (37 new, 0 regressions).
 
 ## Code Review Record
 

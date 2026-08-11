@@ -1,7 +1,7 @@
-"""Unit tests for the remediation LangGraph graph (Story 3.1/3.2).
+"""Unit tests for the remediation LangGraph graph (Story 3.1/3.2/3.3).
 
 Tests graph compilation, plan node execution with mocked planner,
-skeptic validation node, and state management.
+skeptic validation node, dry-run and policy gate nodes, and state management.
 """
 
 import uuid
@@ -15,6 +15,12 @@ from src.models.diagnosis import (
     EvidenceSource,
     ImmutableDiagnosisArtifact,
 )
+from src.models.policy_gate import (
+    DryRunResult,
+    DryRunStepResult,
+    PolicyDecision,
+    PolicyDimension,
+)
 from src.models.remediation import (
     BlastRadius,
     Precondition,
@@ -26,7 +32,9 @@ from src.models.remediation_skeptic import RemediationSkepticVerdict
 from src.pipeline.remediation_graph import (
     RemediationState,
     build_remediation_graph,
+    dry_run_node,
     plan_node,
+    policy_gate_node,
     skeptic_validation_node,
 )
 
@@ -113,6 +121,8 @@ def _make_initial_state(incident_id=None) -> RemediationState:
         "remediation_plan": None,
         "skeptic_challenge": None,
         "skeptic_verdict": None,
+        "dry_run_result": None,
+        "policy_decision": None,
         "stage": "entered",
     }
 
@@ -137,6 +147,18 @@ class TestGraphCompilation:
         builder = build_remediation_graph()
         graph = builder.compile()
         assert "skeptic_validation" in graph.nodes
+
+    @pytest.mark.unit
+    def test_graph_has_dry_run_node(self):
+        builder = build_remediation_graph()
+        graph = builder.compile()
+        assert "dry_run" in graph.nodes
+
+    @pytest.mark.unit
+    def test_graph_has_policy_gate_node(self):
+        builder = build_remediation_graph()
+        graph = builder.compile()
+        assert "policy_gate" in graph.nodes
 
 
 class TestPlanNode:
@@ -327,6 +349,8 @@ class TestFullGraphExecution:
         )
 
         mock_validation = AsyncMock(return_value=(plan, verdict))
+        dr = _make_dry_run_result(iid, plan.id)
+        decision = _make_policy_decision(iid, plan.id, approved=False)
 
         with (
             patch(
@@ -342,6 +366,20 @@ class TestFullGraphExecution:
                 "src.pipeline.remediation_skeptic_validation.run_remediation_skeptic_validation",
                 mock_validation,
             ),
+            patch(
+                "src.pipeline.dry_run.run_dry_run_preflight",
+                new_callable=AsyncMock,
+                return_value=dr,
+            ),
+            patch(
+                "src.pipeline.policy_gate.evaluate_policy_gate",
+                new_callable=AsyncMock,
+                return_value=decision,
+            ),
+            patch(
+                "src.pipeline.remediation_graph._emit_stage_sse",
+                new_callable=AsyncMock,
+            ),
         ):
             builder = build_remediation_graph()
             graph = builder.compile()
@@ -349,14 +387,16 @@ class TestFullGraphExecution:
 
         assert final_state["remediation_plan"] is not None
         assert final_state["skeptic_verdict"] is not None
+        assert final_state["policy_decision"] is not None
         validated = RemediationPlan.model_validate(final_state["remediation_plan"])
         assert validated.incident_id == iid
         assert validated.blast_radius in BlastRadius
 
     @pytest.mark.unit
-    async def test_full_graph_stage_is_validated(self):
-        state = _make_initial_state()
-        plan = _make_plan()
+    async def test_full_graph_stage_is_policy_decided(self):
+        iid = uuid.uuid4()
+        state = _make_initial_state(str(iid))
+        plan = _make_plan(incident_id=iid)
 
         verdict = RemediationSkepticVerdict(
             passed=True,
@@ -370,6 +410,174 @@ class TestFullGraphExecution:
             }],
             verdict_reasoning="Validated",
         )
+
+        mock_validation = AsyncMock(return_value=(plan, verdict))
+        dr = _make_dry_run_result(iid, plan.id)
+        decision = _make_policy_decision(iid, plan.id, approved=False)
+
+        with (
+            patch(
+                "src.agents.planner.run_planner",
+                new_callable=AsyncMock,
+                return_value=plan,
+            ),
+            patch(
+                "src.pipeline.remediation_graph.pipeline_audit_log",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.remediation_skeptic_validation.run_remediation_skeptic_validation",
+                mock_validation,
+            ),
+            patch(
+                "src.pipeline.dry_run.run_dry_run_preflight",
+                new_callable=AsyncMock,
+                return_value=dr,
+            ),
+            patch(
+                "src.pipeline.policy_gate.evaluate_policy_gate",
+                new_callable=AsyncMock,
+                return_value=decision,
+            ),
+            patch(
+                "src.pipeline.remediation_graph._emit_stage_sse",
+                new_callable=AsyncMock,
+            ),
+        ):
+            builder = build_remediation_graph()
+            graph = builder.compile()
+            final_state = await graph.ainvoke(state)
+
+        assert final_state["stage"] == "policy_decided"
+
+
+def _make_dry_run_result(incident_id, plan_id) -> DryRunResult:
+    return DryRunResult(
+        incident_id=incident_id,
+        plan_id=plan_id,
+        step_results=[
+            DryRunStepResult(step_order=1, command="cmd", success=True, message="ok"),
+        ],
+        rbac_check_passed=True,
+        quota_check_passed=True,
+        admission_check_passed=True,
+        overall_passed=True,
+    )
+
+
+def _make_policy_decision(incident_id, plan_id, approved=False) -> PolicyDecision:
+    return PolicyDecision(
+        incident_id=incident_id,
+        plan_id=plan_id,
+        dimensions=[
+            PolicyDimension(name="severity", value="warning", threshold="(none)", passed=False),
+            PolicyDimension(name="blast_radius", value="workload", threshold="(none)", passed=False),
+            PolicyDimension(name="confidence", value=0.85, threshold=1.0, passed=False),
+        ],
+        evidence_complete=True,
+        evidence_gaps_empty=True,
+        auto_execution_approved=approved,
+        reasoning="Default deny",
+    )
+
+
+class TestDryRunNode:
+    """Dry-run node invokes preflight and stores result in state."""
+
+    @pytest.mark.unit
+    async def test_dry_run_node_produces_result(self):
+        iid = uuid.uuid4()
+        plan = _make_plan(incident_id=iid)
+        dr = _make_dry_run_result(iid, plan.id)
+
+        state = _make_initial_state(str(iid))
+        state["remediation_plan"] = plan.model_dump(mode="json")
+        state["stage"] = "validated"
+
+        with (
+            patch(
+                "src.pipeline.dry_run.run_dry_run_preflight",
+                new_callable=AsyncMock,
+                return_value=dr,
+            ),
+            patch(
+                "src.pipeline.remediation_graph.pipeline_audit_log",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.remediation_graph._emit_stage_sse",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await dry_run_node(state)
+
+        assert "dry_run_result" in result
+        assert result["dry_run_result"] is not None
+        validated = DryRunResult.model_validate(result["dry_run_result"])
+        assert validated.overall_passed is True
+
+
+class TestPolicyGateNode:
+    """Policy gate node evaluates decision and stores in state."""
+
+    @pytest.mark.unit
+    async def test_policy_gate_node_produces_decision(self):
+        iid = uuid.uuid4()
+        plan = _make_plan(incident_id=iid)
+        dr = _make_dry_run_result(iid, plan.id)
+        decision = _make_policy_decision(iid, plan.id, approved=False)
+
+        state = _make_initial_state(str(iid))
+        state["remediation_plan"] = plan.model_dump(mode="json")
+        state["dry_run_result"] = dr.model_dump(mode="json")
+        state["stage"] = "dry_run_complete"
+
+        with (
+            patch(
+                "src.pipeline.policy_gate.evaluate_policy_gate",
+                new_callable=AsyncMock,
+                return_value=decision,
+            ),
+            patch(
+                "src.pipeline.remediation_graph.pipeline_audit_log",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.remediation_graph._emit_stage_sse",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await policy_gate_node(state)
+
+        assert "policy_decision" in result
+        validated = PolicyDecision.model_validate(result["policy_decision"])
+        assert validated.auto_execution_approved is False
+
+
+class TestFullGraphWithPolicyGate:
+    """Full graph: plan → skeptic → dry_run → policy_gate produces decision."""
+
+    @pytest.mark.unit
+    async def test_full_graph_produces_policy_decision(self):
+        iid = uuid.uuid4()
+        state = _make_initial_state(str(iid))
+        plan = _make_plan(incident_id=iid)
+
+        verdict = RemediationSkepticVerdict(
+            passed=True,
+            rounds_completed=1,
+            original_plan_hash=plan.plan_hash(),
+            final_plan_hash=plan.plan_hash(),
+            challenge_history=[{
+                "round": 1,
+                "challenge": {"overall_verdict": "ok"},
+                "response": plan.model_dump(mode="json"),
+            }],
+            verdict_reasoning="Validated",
+        )
+
+        dr = _make_dry_run_result(iid, plan.id)
+        decision = _make_policy_decision(iid, plan.id, approved=False)
 
         mock_validation = AsyncMock(return_value=(plan, verdict))
 
@@ -387,9 +595,30 @@ class TestFullGraphExecution:
                 "src.pipeline.remediation_skeptic_validation.run_remediation_skeptic_validation",
                 mock_validation,
             ),
+            patch(
+                "src.pipeline.dry_run.run_dry_run_preflight",
+                new_callable=AsyncMock,
+                return_value=dr,
+            ),
+            patch(
+                "src.pipeline.policy_gate.evaluate_policy_gate",
+                new_callable=AsyncMock,
+                return_value=decision,
+            ),
+            patch(
+                "src.pipeline.remediation_graph._emit_stage_sse",
+                new_callable=AsyncMock,
+            ),
         ):
             builder = build_remediation_graph()
             graph = builder.compile()
             final_state = await graph.ainvoke(state)
 
-        assert final_state["stage"] == "validated"
+        assert final_state["remediation_plan"] is not None
+        assert final_state["skeptic_verdict"] is not None
+        assert final_state["dry_run_result"] is not None
+        assert final_state["policy_decision"] is not None
+        assert final_state["stage"] == "policy_decided"
+
+        pd = PolicyDecision.model_validate(final_state["policy_decision"])
+        assert pd.auto_execution_approved is False

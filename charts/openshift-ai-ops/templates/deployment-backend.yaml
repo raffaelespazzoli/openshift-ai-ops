@@ -106,6 +106,12 @@ spec:
             - name: ALERTMANAGER_URL
               value: "{{ .Values.alertmanager.url }}"
             {{- end }}
+            - name: POLICY_SEVERITY_AUTO_APPROVE
+              value: "{{ .Values.policyGate.severityAutoApprove }}"
+            - name: POLICY_BLAST_RADIUS_AUTO_APPROVE
+              value: "{{ .Values.policyGate.blastRadiusAutoApprove }}"
+            - name: POLICY_CONFIDENCE_MINIMUM
+              value: "{{ .Values.policyGate.confidenceMinimum }}"
             - name: LLM_ENDPOINT
               value: "{{ .Values.llm.endpoint }}"
             - name: LLM_MODEL

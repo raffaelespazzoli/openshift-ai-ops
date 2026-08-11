@@ -1,8 +1,6 @@
-"""LangGraph StateGraph definition for the remediation pipeline (AD-1, Story 3.1/3.2).
+"""LangGraph StateGraph definition for the remediation pipeline (AD-1, Story 3.1/3.2/3.3).
 
-Graph structure: entry → plan → skeptic_validation → END
-Story 3.3 adds dry_run and policy_gate nodes.
-The graph grows incrementally per story.
+Graph structure: entry → plan → skeptic_validation → dry_run → policy_gate → END
 """
 
 from __future__ import annotations
@@ -15,6 +13,7 @@ from langgraph.graph import END, StateGraph
 from ..config.logging import Component, get_logger
 from ..models.diagnosis import ImmutableDiagnosisArtifact
 from ..models.events import EventNames, SSEEventData
+from ..models.policy_gate import DryRunResult
 from ..models.remediation import RemediationPlan
 from .audit_hook import pipeline_audit_log
 
@@ -29,6 +28,8 @@ class RemediationState(TypedDict):
     remediation_plan: dict | None
     skeptic_challenge: dict | None
     skeptic_verdict: dict | None
+    dry_run_result: dict | None
+    policy_decision: dict | None
     stage: str
 
 
@@ -120,22 +121,98 @@ async def skeptic_validation_node(state: RemediationState) -> dict:
     }
 
 
+async def dry_run_node(state: RemediationState) -> dict:
+    """Dry-run pre-flight validation (Story 3.3)."""
+    from .dry_run import run_dry_run_preflight
+
+    incident_id = state["incident_id"]
+    logger.info("Dry-run node started", extra={"incident_id": incident_id})
+
+    await _emit_stage_sse(incident_id, "dry_run", "running")
+
+    plan = RemediationPlan.model_validate(state["remediation_plan"])
+    artifact = ImmutableDiagnosisArtifact.model_validate(state["immutable_artifact"])
+
+    dry_run_result = await run_dry_run_preflight(plan, artifact)
+
+    await pipeline_audit_log(
+        incident_id=incident_id,
+        stage_name="dry_run",
+        state_before="validated",
+        state_after="dry_run_complete",
+        extra_detail={
+            "overall_passed": dry_run_result.overall_passed,
+            "rbac_passed": dry_run_result.rbac_check_passed,
+            "quota_passed": dry_run_result.quota_check_passed,
+        },
+    )
+
+    await _emit_stage_sse(incident_id, "dry_run", "complete")
+
+    return {
+        "dry_run_result": dry_run_result.model_dump(mode="json"),
+        "stage": "dry_run_complete",
+    }
+
+
+async def policy_gate_node(state: RemediationState) -> dict:
+    """Policy gate evaluation — decides auto-execute or human approval (Story 3.3)."""
+    from .policy_gate import evaluate_policy_gate
+
+    incident_id = state["incident_id"]
+    logger.info("Policy gate node started", extra={"incident_id": incident_id})
+
+    plan = RemediationPlan.model_validate(state["remediation_plan"])
+    artifact = ImmutableDiagnosisArtifact.model_validate(state["immutable_artifact"])
+    dry_run = DryRunResult.model_validate(state["dry_run_result"])
+
+    decision = await evaluate_policy_gate(plan, artifact, dry_run)
+
+    await pipeline_audit_log(
+        incident_id=incident_id,
+        stage_name="policy_gate",
+        state_before="dry_run_complete",
+        state_after="policy_decided",
+        extra_detail={
+            "auto_approved": decision.auto_execution_approved,
+            "reasoning": decision.reasoning,
+        },
+    )
+
+    status = "approved" if decision.auto_execution_approved else "denied"
+    await _emit_stage_sse(incident_id, "policy_gate", status)
+
+    return {
+        "policy_decision": decision.model_dump(mode="json"),
+        "stage": "policy_decided",
+    }
+
+
 def build_remediation_graph() -> StateGraph:
     """Build the LangGraph StateGraph for remediation (not yet compiled).
 
-    Graph structure (Story 3.2): entry → plan → skeptic_validation → END
+    Graph structure (Story 3.3): entry → plan → skeptic_validation → dry_run → policy_gate → END
     """
     builder = StateGraph(RemediationState)
     builder.add_node("plan", plan_node)
     builder.add_node("skeptic_validation", skeptic_validation_node)
+    builder.add_node("dry_run", dry_run_node)
+    builder.add_node("policy_gate", policy_gate_node)
     builder.set_entry_point("plan")
     builder.add_edge("plan", "skeptic_validation")
-    builder.add_edge("skeptic_validation", END)
+    builder.add_edge("skeptic_validation", "dry_run")
+    builder.add_edge("dry_run", "policy_gate")
+    builder.add_edge("policy_gate", END)
     return builder
 
 
 async def _emit_skeptic_sse(incident_id: str, state: str) -> None:
     """Emit an SSE event for the skeptic_validation stage."""
+    await _emit_stage_sse(incident_id, "skeptic_validation", state)
+
+
+async def _emit_stage_sse(incident_id: str, stage: str, state: str) -> None:
+    """Emit an SSE event for a pipeline stage transition."""
     try:
         from ..api.event_bus import get_event_bus
 
@@ -144,13 +221,13 @@ async def _emit_skeptic_sse(incident_id: str, state: str) -> None:
             EventNames.INCIDENT_STAGE_CHANGED,
             SSEEventData(
                 incident_id=uuid.UUID(incident_id),
-                stage="skeptic_validation",
+                stage=stage,
                 state=state,
                 payload={},
             ),
         )
     except Exception:
         logger.warning(
-            "Failed to emit skeptic validation SSE event",
-            extra={"incident_id": incident_id, "state": state},
+            "Failed to emit stage SSE event",
+            extra={"incident_id": incident_id, "stage": stage, "state": state},
         )

@@ -1,7 +1,7 @@
-"""Integration tests for the remediation pipeline runner (Story 3.1).
+"""Integration tests for the remediation pipeline runner (Story 3.1/3.3).
 
 Tests that the runner loads the artifact from DB, invokes the graph,
-and persists the plan. Mocks the planner agent and event bus.
+persists the plan, and transitions state based on policy decision.
 """
 
 import contextlib
@@ -10,6 +10,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from src.models.policy_gate import (
+    DryRunResult,
+    DryRunStepResult,
+    PolicyDecision,
+    PolicyDimension,
+)
 from src.models.remediation import (
     BlastRadius,
     RemediationPlan,
@@ -239,3 +245,257 @@ class TestRunRemediationPipeline:
         states = [c[2] for c in emit_calls]
         assert "planning" in states
         assert "planned" in states
+
+
+def _make_policy_decision(incident_id, plan_id, approved=False) -> dict:
+    decision = PolicyDecision(
+        incident_id=incident_id,
+        plan_id=plan_id,
+        dimensions=[
+            PolicyDimension(name="severity", value="warning", threshold="(none)", passed=False),
+            PolicyDimension(name="blast_radius", value="workload", threshold="(none)", passed=False),
+            PolicyDimension(name="confidence", value=0.85, threshold=1.0, passed=False),
+        ],
+        evidence_complete=True,
+        evidence_gaps_empty=True,
+        auto_execution_approved=approved,
+        reasoning="Test decision",
+    )
+    return decision.model_dump(mode="json")
+
+
+def _make_dry_run_dict(incident_id, plan_id) -> dict:
+    dr = DryRunResult(
+        incident_id=incident_id,
+        plan_id=plan_id,
+        step_results=[
+            DryRunStepResult(step_order=1, command="cmd", success=True, message="ok"),
+        ],
+        rbac_check_passed=True,
+        quota_check_passed=True,
+        admission_check_passed=True,
+        overall_passed=True,
+    )
+    return dr.model_dump(mode="json")
+
+
+class TestRunnerPolicyDecision:
+    """Runner transitions incident state based on policy gate decision."""
+
+    @pytest.mark.unit
+    async def test_runner_transitions_to_awaiting_approval_on_deny(self):
+        incident_id = uuid.uuid4()
+        plan = _make_plan(incident_id=incident_id)
+
+        mock_artifact = MagicMock()
+        mock_artifact.model_dump.return_value = {}
+
+        mock_conn = AsyncMock()
+        mock_pool = _make_mock_pool(mock_conn)
+
+        async def mock_get_pool():
+            return mock_pool
+
+        graph_output = {
+            "remediation_plan": plan.model_dump(mode="json"),
+            "dry_run_result": _make_dry_run_dict(incident_id, plan.id),
+            "policy_decision": _make_policy_decision(incident_id, plan.id, approved=False),
+            "stage": "policy_decided",
+        }
+
+        with (
+            patch("src.pipeline.remediation_runner.get_pool", side_effect=mock_get_pool),
+            patch(
+                "src.pipeline.remediation_runner.load_immutable_artifact",
+                new_callable=AsyncMock,
+                return_value=mock_artifact,
+            ),
+            patch(
+                "src.pipeline.remediation_runner.get_checkpointer",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "src.pipeline.remediation_runner.build_remediation_graph"
+            ) as mock_build,
+            patch(
+                "src.pipeline.remediation_runner.persist_remediation_plan",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.remediation_runner.persist_dry_run_result",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.remediation_runner.persist_policy_decision",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.remediation_runner._emit_remediation_event",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.db.audit.write_audit_log",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_graph = AsyncMock()
+            mock_graph.ainvoke.return_value = graph_output
+            mock_builder = MagicMock()
+            mock_builder.compile.return_value = mock_graph
+            mock_build.return_value = mock_builder
+
+            result = await run_remediation_pipeline(incident_id)
+
+        assert result is not None
+        mock_conn.execute.assert_called()
+        update_call = [
+            c for c in mock_conn.execute.call_args_list
+            if "UPDATE incidents" in str(c)
+        ]
+        assert len(update_call) >= 1
+        assert "awaiting_approval" in str(update_call[0])
+
+    @pytest.mark.unit
+    async def test_runner_transitions_to_executing_on_approve(self):
+        incident_id = uuid.uuid4()
+        plan = _make_plan(incident_id=incident_id)
+
+        mock_artifact = MagicMock()
+        mock_artifact.model_dump.return_value = {}
+
+        mock_conn = AsyncMock()
+        mock_pool = _make_mock_pool(mock_conn)
+
+        async def mock_get_pool():
+            return mock_pool
+
+        graph_output = {
+            "remediation_plan": plan.model_dump(mode="json"),
+            "dry_run_result": _make_dry_run_dict(incident_id, plan.id),
+            "policy_decision": _make_policy_decision(incident_id, plan.id, approved=True),
+            "stage": "policy_decided",
+        }
+
+        with (
+            patch("src.pipeline.remediation_runner.get_pool", side_effect=mock_get_pool),
+            patch(
+                "src.pipeline.remediation_runner.load_immutable_artifact",
+                new_callable=AsyncMock,
+                return_value=mock_artifact,
+            ),
+            patch(
+                "src.pipeline.remediation_runner.get_checkpointer",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "src.pipeline.remediation_runner.build_remediation_graph"
+            ) as mock_build,
+            patch(
+                "src.pipeline.remediation_runner.persist_remediation_plan",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.remediation_runner.persist_dry_run_result",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.remediation_runner.persist_policy_decision",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.remediation_runner._emit_remediation_event",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.db.audit.write_audit_log",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_graph = AsyncMock()
+            mock_graph.ainvoke.return_value = graph_output
+            mock_builder = MagicMock()
+            mock_builder.compile.return_value = mock_graph
+            mock_build.return_value = mock_builder
+
+            result = await run_remediation_pipeline(incident_id)
+
+        assert result is not None
+        mock_conn.execute.assert_called()
+        update_call = [
+            c for c in mock_conn.execute.call_args_list
+            if "UPDATE incidents" in str(c)
+        ]
+        assert len(update_call) >= 1
+        assert "executing" in str(update_call[0])
+
+    @pytest.mark.unit
+    async def test_runner_emits_policy_gate_event(self):
+        incident_id = uuid.uuid4()
+        plan = _make_plan(incident_id=incident_id)
+
+        mock_artifact = MagicMock()
+        mock_artifact.model_dump.return_value = {}
+
+        mock_pool = _make_mock_pool()
+
+        async def mock_get_pool():
+            return mock_pool
+
+        graph_output = {
+            "remediation_plan": plan.model_dump(mode="json"),
+            "dry_run_result": _make_dry_run_dict(incident_id, plan.id),
+            "policy_decision": _make_policy_decision(incident_id, plan.id, approved=False),
+            "stage": "policy_decided",
+        }
+
+        with (
+            patch("src.pipeline.remediation_runner.get_pool", side_effect=mock_get_pool),
+            patch(
+                "src.pipeline.remediation_runner.load_immutable_artifact",
+                new_callable=AsyncMock,
+                return_value=mock_artifact,
+            ),
+            patch(
+                "src.pipeline.remediation_runner.get_checkpointer",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "src.pipeline.remediation_runner.build_remediation_graph"
+            ) as mock_build,
+            patch(
+                "src.pipeline.remediation_runner.persist_remediation_plan",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.remediation_runner.persist_dry_run_result",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.remediation_runner.persist_policy_decision",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.remediation_runner._emit_remediation_event",
+                new_callable=AsyncMock,
+            ) as mock_emit,
+            patch(
+                "src.db.audit.write_audit_log",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_graph = AsyncMock()
+            mock_graph.ainvoke.return_value = graph_output
+            mock_builder = MagicMock()
+            mock_builder.compile.return_value = mock_graph
+            mock_build.return_value = mock_builder
+
+            await run_remediation_pipeline(incident_id)
+
+        emit_calls = [c[0] for c in mock_emit.call_args_list]
+        stages = [c[1] for c in emit_calls]
+        states = [c[2] for c in emit_calls]
+        assert "policy_gate" in stages
+        assert "denied" in states

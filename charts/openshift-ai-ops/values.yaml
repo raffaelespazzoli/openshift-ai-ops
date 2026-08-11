@@ -109,6 +109,11 @@ llm:
     name: openshift-ai-ops-llm
     key: api-key
 
+policyGate:
+  severityAutoApprove: ""
+  blastRadiusAutoApprove: ""
+  confidenceMinimum: "1.0"
+
 learningStore:
   decayHalfLifeDays: 90
   similarityThreshold: 0.75

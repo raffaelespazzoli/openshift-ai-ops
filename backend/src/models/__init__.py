@@ -34,6 +34,13 @@ from .remediation import (
     RiskLevel,
 )
 from .remediation_skeptic import RemediationSkepticChallenge, RemediationSkepticVerdict
+from .policy_gate import (
+    DryRunResult,
+    DryRunStepResult,
+    PolicyDecision,
+    PolicyDimension,
+    PolicyMatrix,
+)
 from .case_record import CaseRecordSummary
 from .knowledge import CompletenessResult, RunbookChunk
 from .root_cause_event import CorrelationEvidence, CorrelationLayer, RootCauseEvent
@@ -61,6 +68,8 @@ __all__ = [
     "CompletenessResult",
     "CorrelationEvidence",
     "CorrelationLayer",
+    "DryRunResult",
+    "DryRunStepResult",
     "DiagnosisObject",
     "ERROR_INTERNAL",
     "ERROR_NOT_FOUND",
@@ -75,6 +84,9 @@ __all__ = [
     "Incident",
     "IncidentState",
     "InvalidTransitionError",
+    "PolicyDecision",
+    "PolicyDimension",
+    "PolicyMatrix",
     "Precondition",
     "RemediationPlan",
     "RemediationSkepticChallenge",
