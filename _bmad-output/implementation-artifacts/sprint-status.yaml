@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-08-08
-last_updated: 2026-08-11T01:15:00
+last_updated: 2026-08-10T21:42:00
 project: openshift-ai-ops
 project_key: NOKEY
 tracking_system: file-system
@@ -68,7 +68,7 @@ development_status:
   # Epic 3: Remediation, Execution & Outcome
   epic-3: in-progress
   3-1-remediation-planner-and-structured-plan: done
-  3-2-remediation-skeptic: review
+  3-2-remediation-skeptic: in-progress
   3-3-dry-run-pre-flight-and-policy-gate: ready-for-dev
   3-4-human-approval-workflow-backend-api: ready-for-dev
   3-5-serialized-execution-outcome-observation-and-rollback: ready-for-dev

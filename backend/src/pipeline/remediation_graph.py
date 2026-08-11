@@ -7,12 +7,14 @@ The graph grows incrementally per story.
 
 from __future__ import annotations
 
+import uuid
 from typing import TypedDict
 
 from langgraph.graph import END, StateGraph
 
 from ..config.logging import Component, get_logger
 from ..models.diagnosis import ImmutableDiagnosisArtifact
+from ..models.events import EventNames, SSEEventData
 from ..models.remediation import RemediationPlan
 from .audit_hook import pipeline_audit_log
 
@@ -76,6 +78,9 @@ async def skeptic_validation_node(state: RemediationState) -> dict:
 
     Loads the plan from state, runs the skeptic validation loop,
     and updates state with the verdict and possibly revised plan.
+
+    SSE "validating" fires here (before the loop), while "validated"
+    fires in the runner after artifacts are persisted transactionally.
     """
     from .remediation_skeptic_validation import run_remediation_skeptic_validation
 
@@ -83,6 +88,8 @@ async def skeptic_validation_node(state: RemediationState) -> dict:
     logger.info(
         "Skeptic validation node started", extra={"incident_id": incident_id}
     )
+
+    await _emit_skeptic_sse(incident_id, "validating")
 
     await pipeline_audit_log(
         incident_id=incident_id,
@@ -99,17 +106,6 @@ async def skeptic_validation_node(state: RemediationState) -> dict:
 
     validated_plan, verdict = await run_remediation_skeptic_validation(
         plan, artifact
-    )
-
-    await pipeline_audit_log(
-        incident_id=incident_id,
-        stage_name="skeptic_validation",
-        state_before="validating",
-        state_after="validated",
-        extra_detail={
-            "rounds_completed": verdict.rounds_completed,
-            "hash_changed": verdict.original_plan_hash != verdict.final_plan_hash,
-        },
     )
 
     return {
@@ -136,3 +132,25 @@ def build_remediation_graph() -> StateGraph:
     builder.add_edge("plan", "skeptic_validation")
     builder.add_edge("skeptic_validation", END)
     return builder
+
+
+async def _emit_skeptic_sse(incident_id: str, state: str) -> None:
+    """Emit an SSE event for the skeptic_validation stage."""
+    try:
+        from ..api.event_bus import get_event_bus
+
+        bus = get_event_bus()
+        await bus.emit(
+            EventNames.INCIDENT_STAGE_CHANGED,
+            SSEEventData(
+                incident_id=uuid.UUID(incident_id),
+                stage="skeptic_validation",
+                state=state,
+                payload={},
+            ),
+        )
+    except Exception:
+        logger.warning(
+            "Failed to emit skeptic validation SSE event",
+            extra={"incident_id": incident_id, "state": state},
+        )

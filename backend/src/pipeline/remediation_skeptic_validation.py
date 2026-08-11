@@ -55,9 +55,29 @@ async def run_remediation_skeptic_validation(
 
     for round_num in range(1, MAX_REMEDIATION_SKEPTIC_ROUNDS + 1):
         challenge = await run_remediation_skeptic(current_plan, artifact)
-        revised_plan = await run_planner_rebuttal(
-            current_plan, challenge, artifact
-        )
+
+        try:
+            revised_plan = await run_planner_rebuttal(
+                current_plan, challenge, artifact
+            )
+        except Exception as exc:
+            logger.warning(
+                "Planner rebuttal failed — treating as acceptance of challenge",
+                extra={
+                    "incident_id": incident_id,
+                    "round": round_num,
+                    "error": str(exc),
+                },
+            )
+            revised_plan = current_plan
+            challenge_history.append({
+                "round": round_num,
+                "challenge": challenge.model_dump(mode="json"),
+                "response": current_plan.model_dump(mode="json"),
+                "rebuttal_failed": True,
+                "rebuttal_error": str(exc),
+            })
+            break
 
         challenge_history.append({
             "round": round_num,
