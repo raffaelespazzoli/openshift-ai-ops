@@ -41,26 +41,31 @@ async def pipeline_audit_log(
             (e.g. alternative_hypotheses, coverage_gaps).
         conn: Optional existing DB connection to reuse (for transactional writes).
     """
-    try:
-        detail = {
-            "incident_id": incident_id,
-            "stage": stage_name,
-            "state_before": state_before,
-            "state_after": state_after,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        if extra_detail:
-            detail.update(extra_detail)
+    detail = {
+        "incident_id": incident_id,
+        "stage": stage_name,
+        "state_before": state_before,
+        "state_after": state_after,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    if extra_detail:
+        detail.update(extra_detail)
 
-        if conn is not None:
-            await write_audit_log(
-                conn,
-                actor="pipeline",
-                action=f"pipeline.stage.{stage_name}",
-                target_resource=f"incident/{incident_id}",
-                detail=detail,
-            )
-        else:
+    if conn is not None:
+        # Transactional mode: let failures propagate so the enclosing
+        # transaction rolls back — audit rows must be atomic with the
+        # data they accompany.
+        await write_audit_log(
+            conn,
+            actor="pipeline",
+            action=f"pipeline.stage.{stage_name}",
+            target_resource=f"incident/{incident_id}",
+            detail=detail,
+        )
+    else:
+        # Fire-and-forget mode: swallow errors so a broken audit write
+        # never blocks the pipeline.
+        try:
             pool = await get_pool()
             async with pool.acquire() as acquired_conn:
                 await write_audit_log(
@@ -70,8 +75,8 @@ async def pipeline_audit_log(
                     target_resource=f"incident/{incident_id}",
                     detail=detail,
                 )
-    except Exception:
-        logger.exception(
-            "Pipeline audit log write failed — swallowing error",
-            extra={"incident_id": incident_id, "stage": stage_name},
-        )
+        except Exception:
+            logger.exception(
+                "Pipeline audit log write failed — swallowing error",
+                extra={"incident_id": incident_id, "stage": stage_name},
+            )

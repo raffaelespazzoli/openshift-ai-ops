@@ -113,7 +113,16 @@ async def run_remediation_skeptic(
 
 
 def _build_fallback_challenge(plan: RemediationPlan) -> RemediationSkepticChallenge:
-    """Build a minimal challenge when the LLM fails to produce structured output."""
+    """Build a minimal challenge when the LLM fails to produce structured output.
+
+    Design decision (Story 3.2): this fallback is intentionally permissive.
+    Per the spec ("after the second round, the plan passes regardless of hash
+    change — no infinite loops"), a failed skeptic does NOT block remediation.
+    The fallback produces a minimal challenge record for audit completeness but
+    does not block the plan.  The ``degraded`` flag on the
+    RemediationSkepticVerdict (set when rebuttal_failed) signals to consumers
+    that the validation was degraded.
+    """
     return RemediationSkepticChallenge(
         step_correctness_issues=[
             "Fallback challenge: the skeptic agent could not produce a structured "

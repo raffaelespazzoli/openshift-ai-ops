@@ -103,6 +103,8 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
                                     verdict.get("original_plan_hash")
                                     != verdict.get("final_plan_hash")
                                 ),
+                                "degraded": verdict.get("degraded", False),
+                                "verdict_note": verdict.get("verdict_note"),
                             },
                             conn=conn,
                         )
@@ -114,8 +116,15 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
             raise
 
         if final_state.get("skeptic_verdict"):
+            verdict = final_state["skeptic_verdict"]
             await _emit_remediation_event(
-                incident_id, "skeptic_validation", "validated"
+                incident_id,
+                "skeptic_validation",
+                "validated",
+                payload={
+                    "degraded": verdict.get("degraded", False),
+                    "verdict_note": verdict.get("verdict_note"),
+                },
             )
         await _emit_remediation_event(incident_id, "remediation_plan", "planned")
 
@@ -136,6 +145,7 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
             extra={"incident_id": str(incident_id)},
         )
         await _transition_to_failed(incident_id)
+        await _emit_remediation_event(incident_id, "skeptic_validation", "failed")
         await _emit_remediation_event(incident_id, "remediation_plan", "failed")
         return None
 
@@ -198,6 +208,8 @@ async def _emit_remediation_event(
     incident_id: uuid.UUID,
     stage: str,
     state: str,
+    *,
+    payload: dict | None = None,
 ) -> None:
     """Emit an SSE event for remediation pipeline stage transitions."""
     try:
@@ -210,7 +222,7 @@ async def _emit_remediation_event(
                 incident_id=incident_id,
                 stage=stage,
                 state=state,
-                payload={},
+                payload=payload or {},
             ),
         )
     except Exception:
