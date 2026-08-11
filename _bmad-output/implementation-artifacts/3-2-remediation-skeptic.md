@@ -1,6 +1,10 @@
+---
+baseline_commit: 1510d0f8ec43de1a4a10f57d856527c780febd96
+---
+
 # Story 3.2: Remediation Skeptic
 
-Status: ready-for-dev
+Status: in-progress
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -24,55 +28,63 @@ so that I can trust the proposed fix won't cause unintended damage or miss criti
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Remediation Skeptic challenge/verdict models (AC: #1, #2, #3, #4)
-  - [ ] 1.1 Create `backend/src/models/remediation_skeptic.py` with `RemediationSkepticChallenge`, `RemediationSkepticVerdict` models
-  - [ ] 1.2 `RemediationSkepticChallenge` fields: `step_correctness_issues: list[str]`, `blast_radius_assessment: str`, `rollback_feasibility_issues: list[str]`, `precondition_gaps: list[str]`, `risk_assessment_critique: str`, `overall_verdict: str`, `created_at: datetime`
-  - [ ] 1.3 `RemediationSkepticVerdict` fields: `passed: bool`, `rounds_completed: int` (1–2), `original_plan_hash: str`, `final_plan_hash: str`, `challenge_history: list[dict]`, `verdict_reasoning: str`
-  - [ ] 1.4 Add `plan_hash()` method to `RemediationPlan` model (deterministic hash of steps + blast_radius + rollback_plan + preconditions)
-  - [ ] 1.5 Export from `backend/src/models/__init__.py`
+- [x] Task 1: Remediation Skeptic challenge/verdict models (AC: #1, #2, #3, #4)
+  - [x] 1.1 Create `backend/src/models/remediation_skeptic.py` with `RemediationSkepticChallenge`, `RemediationSkepticVerdict` models
+  - [x] 1.2 `RemediationSkepticChallenge` fields: `step_correctness_issues: list[str]`, `blast_radius_assessment: str`, `rollback_feasibility_issues: list[str]`, `precondition_gaps: list[str]`, `risk_assessment_critique: str`, `overall_verdict: str`, `created_at: datetime`
+  - [x] 1.3 `RemediationSkepticVerdict` fields: `passed: bool`, `rounds_completed: int` (1–2), `original_plan_hash: str`, `final_plan_hash: str`, `challenge_history: list[dict]`, `verdict_reasoning: str`
+  - [x] 1.4 Add `plan_hash()` method to `RemediationPlan` model (deterministic hash of steps + blast_radius + rollback_plan + preconditions)
+  - [x] 1.5 Export from `backend/src/models/__init__.py`
 
-- [ ] Task 2: Remediation Skeptic agent (AC: #1)
-  - [ ] 2.1 Create `backend/src/agents/remediation_skeptic.py` with `build_remediation_skeptic_agent()` and `run_remediation_skeptic(plan: RemediationPlan, artifact: ImmutableDiagnosisArtifact) -> RemediationSkepticChallenge`
-  - [ ] 2.2 The Remediation Skeptic has NO tools (same pattern as Diagnosis Skeptic) — it reasons over the plan and diagnosis context only
-  - [ ] 2.3 Add `REMEDIATION_SKEPTIC` to `AgentRole` enum in `config/llm_settings.py`
-  - [ ] 2.4 Add `REMEDIATION_SKEPTIC_SYSTEM_PROMPT` and `REMEDIATION_SKEPTIC_STRUCTURED_PROMPT` to `agents/prompts.py`
+- [x] Task 2: Remediation Skeptic agent (AC: #1)
+  - [x] 2.1 Create `backend/src/agents/remediation_skeptic.py` with `build_remediation_skeptic_agent()` and `run_remediation_skeptic(plan: RemediationPlan, artifact: ImmutableDiagnosisArtifact) -> RemediationSkepticChallenge`
+  - [x] 2.2 The Remediation Skeptic has NO tools (same pattern as Diagnosis Skeptic) — it reasons over the plan and diagnosis context only
+  - [x] 2.3 Add `REMEDIATION_SKEPTIC` to `AgentRole` enum in `config/llm_settings.py`
+  - [x] 2.4 Add `REMEDIATION_SKEPTIC_SYSTEM_PROMPT` and `REMEDIATION_SKEPTIC_STRUCTURED_PROMPT` to `agents/prompts.py`
 
-- [ ] Task 3: Planner re-challenge response (AC: #2, #4)
-  - [ ] 3.1 Add `run_planner_rebuttal(plan: RemediationPlan, challenge: RemediationSkepticChallenge, artifact: ImmutableDiagnosisArtifact) -> RemediationPlan` to `agents/planner.py`
-  - [ ] 3.2 The planner rebuttal uses the same tools as the original planner (query_cluster_state, check_rbac_permissions, check_resource_quota) — it may query the cluster to verify/refine the plan
-  - [ ] 3.3 Add `PLANNER_REBUTTAL_PROMPT_TEMPLATE` to `agents/prompts.py`
+- [x] Task 3: Planner re-challenge response (AC: #2, #4)
+  - [x] 3.1 Add `run_planner_rebuttal(plan: RemediationPlan, challenge: RemediationSkepticChallenge, artifact: ImmutableDiagnosisArtifact) -> RemediationPlan` to `agents/planner.py`
+  - [x] 3.2 The planner rebuttal uses the same tools as the original planner (query_cluster_state, check_rbac_permissions, check_resource_quota) — it may query the cluster to verify/refine the plan
+  - [x] 3.3 Add `PLANNER_REBUTTAL_PROMPT_TEMPLATE` to `agents/prompts.py`
 
-- [ ] Task 4: Remediation skeptic validation loop (AC: #2, #3, #4)
-  - [ ] 4.1 Create `backend/src/pipeline/remediation_skeptic_validation.py` with `run_remediation_skeptic_validation(plan: RemediationPlan, artifact: ImmutableDiagnosisArtifact) -> tuple[RemediationPlan, RemediationSkepticVerdict]`
-  - [ ] 4.2 Implement hash-based termination: round 1 hash unchanged → pass; hash changed → round 2; after round 2 → pass regardless
-  - [ ] 4.3 Max 2 rounds enforced (AD: "NEVER allow more than one re-challenge")
+- [x] Task 4: Remediation skeptic validation loop (AC: #2, #3, #4)
+  - [x] 4.1 Create `backend/src/pipeline/remediation_skeptic_validation.py` with `run_remediation_skeptic_validation(plan: RemediationPlan, artifact: ImmutableDiagnosisArtifact) -> tuple[RemediationPlan, RemediationSkepticVerdict]`
+  - [x] 4.2 Implement hash-based termination: round 1 hash unchanged → pass; hash changed → round 2; after round 2 → pass regardless
+  - [x] 4.3 Max 2 rounds enforced (AD: "NEVER allow more than one re-challenge")
 
-- [ ] Task 5: Add skeptic node to remediation graph (AC: #1–#4)
-  - [ ] 5.1 Add `skeptic_validation` node to `pipeline/remediation_graph.py` after the `plan` node
-  - [ ] 5.2 Update graph structure: `entry → plan → skeptic_validation → END`
-  - [ ] 5.3 `skeptic_validation_node` loads plan from state, runs the skeptic validation loop, updates state with verdict and possibly revised plan
-  - [ ] 5.4 Update `RemediationState` to include: `skeptic_challenge: dict | None`, `skeptic_verdict: dict | None`
+- [x] Task 5: Add skeptic node to remediation graph (AC: #1–#4)
+  - [x] 5.1 Add `skeptic_validation` node to `pipeline/remediation_graph.py` after the `plan` node
+  - [x] 5.2 Update graph structure: `entry → plan → skeptic_validation → END`
+  - [x] 5.3 `skeptic_validation_node` loads plan from state, runs the skeptic validation loop, updates state with verdict and possibly revised plan
+  - [x] 5.4 Update `RemediationState` to include: `skeptic_challenge: dict | None`, `skeptic_verdict: dict | None`
 
-- [ ] Task 6: Persistence (AC: #5)
-  - [ ] 6.1 Create `backend/src/db/remediation_skeptic.py` with `persist_remediation_skeptic_record(conn, incident_id, round_number, challenge, response, verdict)` — mirrors `db/skeptic.py` pattern
-  - [ ] 6.2 Create Alembic migration `009_add_remediation_skeptic_reviews.py` for `remediation_skeptic_reviews` table
-  - [ ] 6.3 Table schema: `id UUID PK, incident_id UUID FK, round_number INT NOT NULL, challenge JSONB NOT NULL, response JSONB NOT NULL, verdict JSONB, created_at TIMESTAMPTZ`
-  - [ ] 6.4 Persist skeptic records from within the remediation runner after graph completion (inside the transaction)
+- [x] Task 6: Persistence (AC: #5)
+  - [x] 6.1 Create `backend/src/db/remediation_skeptic.py` with `persist_remediation_skeptic_record(conn, incident_id, round_number, challenge, response, verdict)` — mirrors `db/skeptic.py` pattern
+  - [x] 6.2 Create Alembic migration `010_add_remediation_skeptic_reviews.py` for `remediation_skeptic_reviews` table
+  - [x] 6.3 Table schema: `id UUID PK, incident_id UUID FK, round_number INT NOT NULL, challenge JSONB NOT NULL, response JSONB NOT NULL, verdict JSONB, created_at TIMESTAMPTZ`
+  - [x] 6.4 Persist skeptic records from within the remediation runner after graph completion (inside the transaction)
 
-- [ ] Task 7: Wire persistence into remediation runner (AC: #5)
-  - [ ] 7.1 Update `pipeline/remediation_runner.py` to persist skeptic artifacts after graph completes (same pattern as diagnosis runner calling `persist_skeptic_artifacts`)
-  - [ ] 7.2 Emit SSE events for skeptic validation start/complete via event bus
-  - [ ] 7.3 Write audit_log entries for each skeptic round
+- [x] Task 7: Wire persistence into remediation runner (AC: #5)
+  - [x] 7.1 Update `pipeline/remediation_runner.py` to persist skeptic artifacts after graph completes (same pattern as diagnosis runner calling `persist_skeptic_artifacts`)
+  - [x] 7.2 Emit SSE events for skeptic validation start/complete via event bus
+  - [x] 7.3 Write audit_log entries for each skeptic round
 
-- [ ] Task 8: Tests — unit (AC: #1–#4)
-  - [ ] 8.1 `tests/models/test_remediation_skeptic.py` — model validation, plan_hash() determinism, hash change detection
-  - [ ] 8.2 `tests/agents/test_remediation_skeptic.py` — skeptic produces valid `RemediationSkepticChallenge` with mocked LLM
-  - [ ] 8.3 `tests/agents/test_planner.py` (extend) — planner rebuttal produces valid revised `RemediationPlan` with mocked LLM
-  - [ ] 8.4 `tests/pipeline/test_remediation_skeptic_validation.py` — hash-unchanged passes in 1 round, hash-changed triggers re-challenge, max 2 rounds enforced
+- [x] Task 8: Tests — unit (AC: #1–#4)
+  - [x] 8.1 `tests/models/test_remediation_skeptic.py` — model validation, plan_hash() determinism, hash change detection
+  - [x] 8.2 `tests/agents/test_remediation_skeptic.py` — skeptic produces valid `RemediationSkepticChallenge` with mocked LLM
+  - [x] 8.3 `tests/agents/test_planner.py` (extend) — planner rebuttal produces valid revised `RemediationPlan` with mocked LLM
+  - [x] 8.4 `tests/pipeline/test_remediation_skeptic_validation.py` — hash-unchanged passes in 1 round, hash-changed triggers re-challenge, max 2 rounds enforced
 
-- [ ] Task 9: Tests — integration (AC: #5)
-  - [ ] 9.1 `tests/db/test_remediation_skeptic.py` — persist_remediation_skeptic_record roundtrip (testcontainers)
-  - [ ] 9.2 `tests/pipeline/test_remediation_graph.py` (extend) — graph now produces plan + skeptic verdict, remediation_skeptic_reviews rows created
+- [x] Task 9: Tests — integration (AC: #5)
+  - [x] 9.1 `tests/db/test_remediation_skeptic.py` — persist_remediation_skeptic_record roundtrip (testcontainers)
+  - [x] 9.2 `tests/pipeline/test_remediation_graph.py` (extend) — graph now produces plan + skeptic verdict, remediation_skeptic_reviews rows created
+
+### Review Findings
+
+- [x] [Review][Patch] Skeptic validation start event still emits after the work finishes [`backend/src/pipeline/remediation_runner.py:85`] — `run_remediation_pipeline()` sends `skeptic_validation=validating` only after `graph.ainvoke()` has already finished the skeptic loop, so subscribers never observe a real stage start and may miss a terminal skeptic-stage event if persistence fails afterward. **Fixed**: `skeptic_validation_node()` now emits `skeptic_validation=validating` before entering the skeptic loop.
+- [x] [Review][Patch] Skeptic validation audit rows still commit outside the remediation transaction [`backend/src/pipeline/remediation_graph.py:87`] — `skeptic_validation_node()` writes `pipeline.stage.skeptic_validation` audit rows through `pipeline_audit_log()`, which acquires its own connection and commits independently, so a later rollback can leave an audit trail claiming validation completed even though the final plan / skeptic artifacts were not durably saved. **Fixed**: the terminal `skeptic_validation=validated` audit write now runs inside the remediation persistence transaction in `run_remediation_pipeline()`.
+- [x] [Review][Patch] Planner rebuttal failures still abort the whole remediation pipeline [`backend/src/agents/planner.py:312`] — `run_planner_rebuttal()` assumes valid structured output and propagates agent/tool/schema failures through `run_remediation_skeptic_validation()`, which currently fails the entire remediation pipeline instead of degrading to the existing plan or another bounded manual-verification path. **Fixed**: `run_remediation_skeptic_validation()` now catches rebuttal exceptions, records the degraded round, and keeps the pipeline from aborting.
+- [ ] [Review][Patch] Rebuttal failures still look like a clean skeptic pass [`backend/src/pipeline/remediation_skeptic_validation.py:63`] — When `run_planner_rebuttal()` raises, the loop preserves the existing plan and records `rebuttal_failed` in nested history, but still returns `passed=True` and lets the runner emit `skeptic_validation=validated`. That turns an LLM/tool/schema failure into an apparent successful validation instead of surfacing a degraded/manual-verification outcome.
+- [ ] [Review][Patch] Skeptic stage can remain stuck in `validating` after persistence failure [`backend/src/pipeline/remediation_runner.py:126`] — The graph now emits `skeptic_validation=validating` at stage start, but if transactional persistence fails afterward the exception path only emits `remediation_plan=failed`. Subscribers tracking the skeptic stage never receive a terminal failure/aborted event for `skeptic_validation`.
 
 ## Dev Notes
 
@@ -591,3 +603,74 @@ backend/tests/
 - [Source: agents/skeptic.py] — Agent architecture (NO tools, create_react_agent + response_format)
 - [Source: db/skeptic.py] — Persistence pattern to mirror
 - [Source: models/skeptic.py] — Model architecture (Challenge + Verdict pattern)
+
+## Dev Agent Record
+
+### Agent Model Used
+
+Claude Opus 4.6 (via Cursor)
+
+### Debug Log References
+
+No issues encountered. All patterns mirrored cleanly from the Diagnosis Skeptic (Story 2.4). The only fix needed was adjusting test mock patch paths — the validation loop uses deferred imports inside the function body, so patches must target the original module location rather than the importer.
+
+### Completion Notes List
+
+- **Task 1:** Created `RemediationSkepticChallenge` and `RemediationSkepticVerdict` Pydantic models in `models/remediation_skeptic.py`. Added `plan_hash()` to `RemediationPlan` — deterministic SHA-256 of steps, blast_radius, rollback_plan, preconditions, estimated_risk; excludes metadata (id, summary, created_at). Exported new models from `models/__init__.py`. Added `REMEDIATION_SKEPTIC` to `AgentRole` enum.
+- **Task 2:** Created remediation skeptic agent in `agents/remediation_skeptic.py` — `build_remediation_skeptic_agent()` with NO tools (pure reasoner pattern from Diagnosis Skeptic), `run_remediation_skeptic()` with fallback challenge on LLM failure.
+- **Task 3:** Added `run_planner_rebuttal()` to `agents/planner.py` — planner responds to skeptic challenges using same tools as original planner. Added `PLANNER_REBUTTAL_PROMPT_TEMPLATE` to `agents/prompts.py`.
+- **Task 4:** Created `pipeline/remediation_skeptic_validation.py` — hash-based termination loop mirroring `skeptic_validation.py`. Max 2 rounds enforced, always passes after loop completes.
+- **Task 5:** Extended `RemediationState` with `skeptic_challenge` and `skeptic_verdict` fields. Added `skeptic_validation_node` to remediation graph. Updated graph structure: `entry → plan → skeptic_validation → END`.
+- **Task 6:** Created `db/remediation_skeptic.py` with `persist_remediation_skeptic_record()` mirroring `db/skeptic.py`. Created Alembic migration `010_add_remediation_skeptic_reviews.py` for the `remediation_skeptic_reviews` table with incident index.
+- **Task 7:** Updated `pipeline/remediation_runner.py` to persist skeptic artifacts after graph completion, emit SSE events for skeptic validation start/complete, and write audit_log entries for each round.
+- **Task 8:** Created 41 new unit tests: 19 model tests (challenge/verdict validation, plan_hash determinism/sensitivity), 8 agent tests (skeptic + planner rebuttal), 5 validation loop tests, 9 graph tests (skeptic node + full graph execution). All 510 unit tests pass (469 baseline + 41 new).
+- **Task 9:** Created 4 DB integration tests for `persist_remediation_skeptic_record` roundtrip, multiple rounds, and JSONB integrity.
+
+## File List
+
+| Action | File | Description |
+|--------|------|-------------|
+| NEW | `backend/src/models/remediation_skeptic.py` | `RemediationSkepticChallenge` and `RemediationSkepticVerdict` models |
+| NEW | `backend/src/agents/remediation_skeptic.py` | Remediation Skeptic agent (NO tools, pure reasoner) |
+| NEW | `backend/src/pipeline/remediation_skeptic_validation.py` | Hash-based skeptic validation loop for remediation plans |
+| NEW | `backend/src/db/remediation_skeptic.py` | `persist_remediation_skeptic_record()` persistence function |
+| NEW | `backend/alembic/versions/010_add_remediation_skeptic_reviews.py` | Migration: `remediation_skeptic_reviews` table |
+| NEW | `backend/tests/models/test_remediation_skeptic.py` | Unit tests: model validation, plan_hash() tests |
+| NEW | `backend/tests/agents/test_remediation_skeptic.py` | Unit tests: skeptic agent with mocked LLM |
+| NEW | `backend/tests/pipeline/test_remediation_skeptic_validation.py` | Unit tests: validation loop hash termination, max rounds |
+| NEW | `backend/tests/db/test_remediation_skeptic.py` | DB integration tests: persistence roundtrip |
+| MODIFIED | `backend/src/models/remediation.py` | Added `plan_hash()` method to `RemediationPlan` |
+| MODIFIED | `backend/src/models/__init__.py` | Export `RemediationSkepticChallenge`, `RemediationSkepticVerdict` |
+| MODIFIED | `backend/src/config/llm_settings.py` | Added `REMEDIATION_SKEPTIC` to `AgentRole` enum |
+| MODIFIED | `backend/src/agents/prompts.py` | Added `REMEDIATION_SKEPTIC_SYSTEM_PROMPT`, `REMEDIATION_SKEPTIC_STRUCTURED_PROMPT`, `PLANNER_REBUTTAL_PROMPT_TEMPLATE` |
+| MODIFIED | `backend/src/agents/planner.py` | Added `run_planner_rebuttal()` function |
+| MODIFIED | `backend/src/pipeline/remediation_graph.py` | Added `skeptic_validation` node, updated graph edges, extended `RemediationState` |
+| MODIFIED | `backend/src/pipeline/remediation_runner.py` | Persist skeptic artifacts, emit SSE events, audit logging |
+| MODIFIED | `backend/tests/agents/test_planner.py` | Added planner rebuttal tests |
+| MODIFIED | `backend/tests/pipeline/test_remediation_graph.py` | Extended for skeptic node and updated graph structure |
+| MODIFIED | `_bmad-output/implementation-artifacts/sprint-status.yaml` | Story status updated to review |
+
+## Change Log
+
+| Date | Change |
+|------|--------|
+| 2026-08-11 | Story 3.2 implemented: Remediation Skeptic agent, validation loop, persistence, graph integration. 41 new unit tests, 4 DB integration tests. All 510 unit tests pass with 0 regressions. |
+
+## Code Review Record
+
+### Review Round 2 — 2026-08-10
+**Review model:** GPT-5.4
+**Fix model:** to be filled when fixes are applied
+
+#### Findings
+- [x] [Review][Patch] Skeptic validation start event still emits after the work finishes [`backend/src/pipeline/remediation_runner.py:85`] — `run_remediation_pipeline()` sends `skeptic_validation=validating` only after `graph.ainvoke()` has already finished the skeptic loop, so subscribers never observe a real stage start and may miss a terminal skeptic-stage event if persistence fails afterward. **Fixed**: `skeptic_validation_node()` now emits `skeptic_validation=validating` before entering the skeptic loop.
+- [x] [Review][Patch] Skeptic validation audit rows still commit outside the remediation transaction [`backend/src/pipeline/remediation_graph.py:87`] — `skeptic_validation_node()` writes `pipeline.stage.skeptic_validation` audit rows through `pipeline_audit_log()`, which acquires its own connection and commits independently, so a later rollback can leave an audit trail claiming validation completed even though the final plan / skeptic artifacts were not durably saved. **Fixed**: the terminal `skeptic_validation=validated` audit write now runs inside the remediation persistence transaction in `run_remediation_pipeline()`.
+- [x] [Review][Patch] Planner rebuttal failures still abort the whole remediation pipeline [`backend/src/agents/planner.py:312`] — `run_planner_rebuttal()` assumes valid structured output and propagates agent/tool/schema failures through `run_remediation_skeptic_validation()`, which currently fails the entire remediation pipeline instead of degrading to the existing plan or another bounded manual-verification path. **Fixed**: `run_remediation_skeptic_validation()` now catches rebuttal exceptions, records the degraded round, and keeps the pipeline from aborting.
+
+### Review Round 3 — 2026-08-10
+**Review model:** GPT-5.4
+**Fix model:** to be filled when fixes are applied
+
+#### Findings
+- [ ] [Review][Patch] Rebuttal failures still look like a clean skeptic pass [`backend/src/pipeline/remediation_skeptic_validation.py:63`] — When `run_planner_rebuttal()` raises, the loop preserves the existing plan and records `rebuttal_failed` in nested history, but still returns `passed=True` and lets the runner emit `skeptic_validation=validated`. That turns an LLM/tool/schema failure into an apparent successful validation instead of surfacing a degraded/manual-verification outcome.
+- [ ] [Review][Patch] Skeptic stage can remain stuck in `validating` after persistence failure [`backend/src/pipeline/remediation_runner.py:126`] — The graph now emits `skeptic_validation=validating` at stage start, but if transactional persistence fails afterward the exception path only emits `remediation_plan=failed`. Subscribers tracking the skeptic stage never receive a terminal failure/aborted event for `skeptic_validation`.

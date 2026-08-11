@@ -8,6 +8,7 @@ is the API audit middleware).
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from ..config.logging import Component, get_logger
 from ..db import get_pool
@@ -23,8 +24,13 @@ async def pipeline_audit_log(
     state_before: str,
     state_after: str,
     extra_detail: dict | None = None,
+    conn: Any | None = None,
 ) -> None:
-    """Write a pipeline stage transition to the audit log (fire-and-forget).
+    """Write a pipeline stage transition to the audit log.
+
+    When *conn* is provided the write participates in the caller's
+    transaction (ensuring atomicity with plan/skeptic persistence).
+    When omitted the function acquires its own connection (fire-and-forget).
 
     Args:
         incident_id: The incident UUID being processed.
@@ -33,28 +39,44 @@ async def pipeline_audit_log(
         state_after: Pipeline state after this node ran.
         extra_detail: Optional additional fields to include in the audit record
             (e.g. alternative_hypotheses, coverage_gaps).
+        conn: Optional existing DB connection to reuse (for transactional writes).
     """
-    try:
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            detail = {
-                "incident_id": incident_id,
-                "stage": stage_name,
-                "state_before": state_before,
-                "state_after": state_after,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-            if extra_detail:
-                detail.update(extra_detail)
-            await write_audit_log(
-                conn,
-                actor="pipeline",
-                action=f"pipeline.stage.{stage_name}",
-                target_resource=f"incident/{incident_id}",
-                detail=detail,
-            )
-    except Exception:
-        logger.exception(
-            "Pipeline audit log write failed — swallowing error",
-            extra={"incident_id": incident_id, "stage": stage_name},
+    detail = {
+        "incident_id": incident_id,
+        "stage": stage_name,
+        "state_before": state_before,
+        "state_after": state_after,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    if extra_detail:
+        detail.update(extra_detail)
+
+    if conn is not None:
+        # Transactional mode: let failures propagate so the enclosing
+        # transaction rolls back — audit rows must be atomic with the
+        # data they accompany.
+        await write_audit_log(
+            conn,
+            actor="pipeline",
+            action=f"pipeline.stage.{stage_name}",
+            target_resource=f"incident/{incident_id}",
+            detail=detail,
         )
+    else:
+        # Fire-and-forget mode: swallow errors so a broken audit write
+        # never blocks the pipeline.
+        try:
+            pool = await get_pool()
+            async with pool.acquire() as acquired_conn:
+                await write_audit_log(
+                    acquired_conn,
+                    actor="pipeline",
+                    action=f"pipeline.stage.{stage_name}",
+                    target_resource=f"incident/{incident_id}",
+                    detail=detail,
+                )
+        except Exception:
+            logger.exception(
+                "Pipeline audit log write failed — swallowing error",
+                extra={"incident_id": incident_id, "stage": stage_name},
+            )

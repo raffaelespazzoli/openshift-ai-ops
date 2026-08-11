@@ -16,6 +16,7 @@ class AgentRole(StrEnum):
     ORCHESTRATOR = "orchestrator"
     SKEPTIC = "skeptic"
     PLANNER = "planner"
+    REMEDIATION_SKEPTIC = "remediation_skeptic"
 
 
 @dataclass(frozen=True)

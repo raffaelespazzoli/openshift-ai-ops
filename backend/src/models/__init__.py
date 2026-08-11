@@ -33,6 +33,7 @@ from .remediation import (
     RemediationStep,
     RiskLevel,
 )
+from .remediation_skeptic import RemediationSkepticChallenge, RemediationSkepticVerdict
 from .case_record import CaseRecordSummary
 from .knowledge import CompletenessResult, RunbookChunk
 from .root_cause_event import CorrelationEvidence, CorrelationLayer, RootCauseEvent
@@ -76,6 +77,8 @@ __all__ = [
     "InvalidTransitionError",
     "Precondition",
     "RemediationPlan",
+    "RemediationSkepticChallenge",
+    "RemediationSkepticVerdict",
     "RemediationStep",
     "RiskLevel",
     "ROOT_CAUSE_TAXONOMY",

@@ -44,6 +44,12 @@ def _make_mock_pool(mock_conn=None):
     conn = mock_conn or AsyncMock()
 
     @contextlib.asynccontextmanager
+    async def _transaction():
+        yield
+
+    conn.transaction = _transaction
+
+    @contextlib.asynccontextmanager
     async def _acquire():
         yield conn
 
