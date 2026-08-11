@@ -4,7 +4,7 @@ baseline_commit: 1510d0f8ec43de1a4a10f57d856527c780febd96
 
 # Story 3.2: Remediation Skeptic
 
-Status: in-progress
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
