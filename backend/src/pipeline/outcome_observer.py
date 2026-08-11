@@ -182,12 +182,38 @@ async def _check_alert_refired(
     return row["refired"] if row else False
 
 
+_DEGRADATION_SIGNALS = (
+    "CrashLoopBackOff",
+    "ImagePullBackOff",
+    "ErrImagePull",
+    "OOMKilled",
+    "Error",
+    "Failed",
+    "NotReady",
+    "Terminating",
+    "Evicted",
+    "BackOff",
+    "ContainerCannotRun",
+)
+
+
+def _content_indicates_unhealthy(text: str) -> bool:
+    """Check MCP response content for degradation signals."""
+    lowered = text.lower()
+    for signal in _DEGRADATION_SIGNALS:
+        if signal.lower() in lowered:
+            return True
+    return False
+
+
 async def _verify_affected_resources(
     artifact: ImmutableDiagnosisArtifact,
 ) -> dict | None:
     """Verify affected resources are healthy via read-only MCP.
 
     Uses ReadOnlyMCPClient for post-remediation verification (AD-2).
+    A resource is considered unhealthy if the MCP response is invalid
+    OR contains known degradation keywords (CrashLoopBackOff, OOMKilled, etc.).
     """
     if not artifact.affected_resources:
         return {"all_healthy": True, "resources": []}
@@ -203,12 +229,24 @@ async def _verify_affected_resources(
             )
             from ..models.diagnosis import EvidenceArtifact
 
-            healthy = isinstance(evidence, EvidenceArtifact)
+            if not isinstance(evidence, EvidenceArtifact):
+                results.append(
+                    {
+                        "resource": resource,
+                        "healthy": False,
+                        "detail": str(evidence)[:200],
+                    }
+                )
+                continue
+
+            content = evidence.result[:2000]
+            has_degradation = _content_indicates_unhealthy(content)
+            healthy = not has_degradation
             results.append(
                 {
                     "resource": resource,
                     "healthy": healthy,
-                    "detail": evidence.result[:200] if healthy else str(evidence),
+                    "detail": content[:200],
                 }
             )
 

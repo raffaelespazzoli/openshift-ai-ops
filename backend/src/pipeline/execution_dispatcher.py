@@ -89,6 +89,21 @@ async def _execute_with_lock(
                 )
                 return
 
+            async with pool.acquire() as check_conn:
+                state_row = await check_conn.fetchrow(
+                    "SELECT state FROM incidents WHERE id = $1",
+                    incident_id,
+                )
+            if state_row is None or state_row["state"] != "executing":
+                logger.info(
+                    "Incident no longer in executing state after lock acquisition",
+                    extra={
+                        "incident_id": str(incident_id),
+                        "current_state": state_row["state"] if state_row else None,
+                    },
+                )
+                return
+
             try:
                 await _run_execution_cycle(incident_id, row, config)
             finally:

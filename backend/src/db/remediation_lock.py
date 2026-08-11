@@ -28,20 +28,21 @@ async def acquire_remediation_lock(
     Returns True if lock acquired, False if lock is held by another.
     """
     try:
-        await conn.execute(
-            """
-            UPDATE remediation_locks
-            SET locked_by = $1, locked_at = NOW(), incident_id = $1
-            WHERE id = 'global'
-            """,
-            incident_id,
-        )
         await conn.fetchrow(
-            "SELECT * FROM remediation_locks WHERE id = 'global' FOR UPDATE NOWAIT"
+            "SELECT id FROM remediation_locks WHERE id = 'global' FOR UPDATE NOWAIT"
         )
-        return True
     except asyncpg.exceptions.LockNotAvailableError:
         return False
+
+    await conn.execute(
+        """
+        UPDATE remediation_locks
+        SET locked_by = $1, locked_at = NOW(), incident_id = $1
+        WHERE id = 'global'
+        """,
+        incident_id,
+    )
+    return True
 
 
 async def release_remediation_lock(conn: asyncpg.Connection) -> None:
