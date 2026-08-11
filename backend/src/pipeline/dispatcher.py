@@ -19,6 +19,7 @@ from ..db.queue import (
     get_active_pipeline_count,
     get_rce_incident_ids,
     recover_stale_items,
+    recover_stale_remediation,
 )
 from ..models.state_machine import IncidentState, transition
 from .priority_queue import check_ttl_expired_items
@@ -260,6 +261,12 @@ async def dispatch_remediation(conn: asyncpg.Connection | asyncpg.Pool) -> None:
     same ``active_pipelines`` limit as diagnosis pipelines.
     """
     settings = get_queue_settings()
+    # NOTE: The parallelism cap check is not atomic across replicas. In the
+    # current MVP (single-replica deployment) this is safe. For multi-replica
+    # deployments this should use a DB-backed atomic counter, e.g.
+    #   SELECT COUNT(*) FROM active_pipelines WHERE completed_at IS NULL
+    # inside the same transaction that inserts the new row, guarded by
+    # pg_advisory_xact_lock, to prevent cap over-subscription.
     active_count = await get_active_pipeline_count(conn)
     if active_count >= settings.parallelism_cap:
         return
@@ -418,6 +425,12 @@ async def run_dispatcher() -> None:
                     logger.info(
                         "Dispatcher startup: recovered stale items",
                         extra={"recovered_count": recovered},
+                    )
+                rem_recovered = await recover_stale_remediation(conn)
+                if rem_recovered:
+                    logger.info(
+                        "Dispatcher startup: recovered stale remediation items",
+                        extra={"recovered_count": rem_recovered},
                     )
             break
         except asyncio.CancelledError:

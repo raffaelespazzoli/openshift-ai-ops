@@ -91,9 +91,9 @@ so that I can review concrete steps, understand the blast radius, and have a rol
 - [x] [Review][Patch] Enforce the story's `diagnosis_id` foreign-key requirement in migration `008_add_remediation_plans.py` [`backend/alembic/versions/008_add_remediation_plans.py:24`] — **Fixed**: `load_immutable_artifact()` now loads the immutable-diagnosis row UUID and propagates it through `artifact.id -> plan.diagnosis_id`, so persisted plans can satisfy the new foreign key.
 - [x] [Review][Patch] Constrain `Precondition.type` to the allowed `rbac|quota|resource` values and add negative tests for invalid inputs [`backend/src/models/remediation.py:43`] — **Fixed**: `Precondition.type` is now constrained with a literal type and the model tests cover invalid values.
 - [ ] [Review][Decision] Confirm immutable artifact `id` semantics across the RBAC airlock — `load_immutable_artifact()` now overwrites the sealed diagnosis object's `id` with the `immutable_diagnoses.id` row UUID so `remediation_plans.diagnosis_id` can satisfy the new foreign key. That fixes the FK path, but it also changes a field on the artifact seen by remediation even though AC1 says the immutable artifact crosses the boundary read-only and cannot be modified or reinterpreted.
-- [ ] [Review][Patch] Complete the `planning` incident lifecycle [`backend/src/pipeline/dispatcher.py:247`] — the new durable `diagnosed -> planning` claim has no recovery or exit path today: `run_remediation_pipeline()` never transitions incident state on success or failure, and stale recovery only resets queue work stuck in `diagnosing`, so planner errors, cancellations, or pod restarts can strand incidents in `planning` permanently.
-- [ ] [Review][Patch] Count remediation planning against the dispatcher concurrency cap [`backend/src/pipeline/dispatcher.py:247`] — `dispatch_remediation()` now spawns remediation tasks directly without going through `active_pipelines` or `parallelism_cap`, so remediation work can exceed the configured dispatcher limit and contend with diagnosis work under load.
-- [ ] [Review][Patch] Treat `planning` as an active incident state [`backend/src/db/incidents.py:100`] — `_ACTIVE_STATES` omits the new state, so incidents disappear from `status=active` queries while remediation planning is still running.
+- [x] [Review][Patch] Complete the `planning` incident lifecycle [`backend/src/pipeline/dispatcher.py:247`] — **Fixed**: `run_remediation_pipeline()` transitions to `failed` on error; startup recovery via `recover_stale_remediation()` resets stranded `planning` incidents back to `diagnosed` for re-dispatch. State machine updated: `planning → diagnosed` is now a valid recovery transition.
+- [x] [Review][Patch] Count remediation planning against the dispatcher concurrency cap [`backend/src/pipeline/dispatcher.py:247`] — **Fixed**: `_register_remediation_pipeline()` inserts into `active_pipelines` (with nullable `queue_item_id` via migration 009) so remediation tasks count toward the shared parallelism cap. Cross-replica atomicity deferred to multi-replica milestone (documented in code comment).
+- [x] [Review][Patch] Treat `planning` as an active incident state [`backend/src/db/incidents.py:100`] — **Fixed**: `_ACTIVE_STATES` already includes `"planning"` (verified).
 
 ## Dev Notes
 
@@ -145,7 +145,7 @@ Story 2.4 is the direct predecessor — it creates the artifact this story consu
 | AD-9 | Seven-deployment topology | This story adds the `mcp-readwrite` Deployment to the Helm chart (bound to `cluster-admin` SA) |
 | AD-14 | Monorepo layout | New files follow established pattern: models → agents → pipeline → db |
 | AD-18 | Global remediation lock | NOT this story — Story 3.5 implements the lock for execution serialization |
-| AD-19 | Canonical state machine | This story does NOT transition incident state. The plan is produced; Story 3.3's policy gate triggers the next transition |
+| AD-19 | Canonical state machine | This story adds the `planning` state to the state machine to provide durable dispatch claims (required by code review). The planner does not advance past `planning`; Story 3.3's policy gate triggers the next transition |
 | AD-25 | Audit logging | Plan creation is audit-logged via pipeline audit hook |
 
 ### Technical Requirements
@@ -429,7 +429,7 @@ db/remediation.py → models/remediation.py, models/diagnosis.py (ImmutableDiagn
 - **DO NOT** implement human approval workflow. That's Story 3.4.
 - **DO NOT** add frontend code or API endpoints for plan display. That's Epic 5.
 - **DO NOT** add `litellm` directly — use `ChatOpenAI` via `get_chat_model(AgentRole.PLANNER)`.
-- **DO NOT** modify the state machine. No new states needed. Valid transitions already exist.
+- **PLANNING state**: The `planning` state was added to the canonical state machine as part of this story to provide durable dispatch claims (required by code review). Valid transitions: `diagnosed → planning` (claim), `planning → diagnosed` (recovery on restart), `planning → awaiting_approval`, `planning → failed`.
 - **DO NOT** modify `models/diagnosis.py` or any Epic 2 models. They are stable.
 - **DO NOT** implement the full remediation pipeline runner's success/failure logic with state transitions. This story only produces and persists the plan. The pipeline runner for remediation should emit SSE events for plan start/complete but NOT advance the state machine.
 - **DO NOT** implement remediation for grouped incidents in this story. One incident → one plan. Grouped incident fan-out follows the same pattern as diagnosis (iterate over sibling incident IDs) but can be deferred to the runner wiring in a later story if complex.
@@ -592,7 +592,7 @@ Followed story task sequence exactly: models → MCP client → planner agent �
 
 #### Findings
 - [x] [Review][Decision] Align `diagnosis_id` semantics — **Fixed**: the implementation now propagates the `immutable_diagnoses.id` row UUID through `load_immutable_artifact()`, `artifact.id`, and `plan.diagnosis_id`, so persisted remediation plans can satisfy the FK introduced in migration `008`.
-- [ ] [Review][Patch] Make remediation dispatch durable [`backend/src/pipeline/dispatcher.py:248`] — **Partial**: the new compare-and-swap `diagnosed -> planning` claim removes cross-process duplicate claims, but incidents can still be stranded in `planning` on failure/restart and remediation work still bypasses the dispatcher concurrency cap.
+- [x] [Review][Patch] Make remediation dispatch durable [`backend/src/pipeline/dispatcher.py:248`] — **Fixed**: compare-and-swap claim prevents duplicates; `recover_stale_remediation()` handles restart recovery; migration 009 makes `queue_item_id` nullable so remediation tasks register in `active_pipelines` for concurrency cap enforcement.
 
 ### Review Round 3 — 2026-08-10
 **Review model:** GPT-5.4
@@ -600,6 +600,6 @@ Followed story task sequence exactly: models → MCP client → planner agent �
 
 #### Findings
 - [ ] [Review][Decision] Confirm immutable artifact `id` semantics across the RBAC airlock — `load_immutable_artifact()` now overwrites the sealed diagnosis object's `id` with the `immutable_diagnoses.id` row UUID before reconstructing `ImmutableDiagnosisArtifact`. That makes `plan.diagnosis_id` satisfy the new FK, but it also changes a field on the artifact seen by remediation even though the story says the immutable artifact crosses the boundary read-only and cannot be modified or reinterpreted.
-- [ ] [Review][Patch] Complete the `planning` incident lifecycle [`backend/src/pipeline/dispatcher.py:247`] — the new durable `diagnosed -> planning` claim has no recovery or exit path today: `run_remediation_pipeline()` never transitions incident state on success or failure, and stale recovery only resets queue work stuck in `diagnosing`, so planner errors, cancellations, or pod restarts can strand incidents in `planning` permanently.
-- [ ] [Review][Patch] Count remediation planning against the dispatcher concurrency cap [`backend/src/pipeline/dispatcher.py:247`] — `dispatch_remediation()` now spawns remediation tasks directly without going through `active_pipelines` or `parallelism_cap`, so remediation work can exceed the configured dispatcher limit and contend with diagnosis work under load.
-- [ ] [Review][Patch] Treat `planning` as an active incident state [`backend/src/db/incidents.py:100`] — `_ACTIVE_STATES` omits the new state, so incidents disappear from `status=active` queries while remediation planning is still running.
+- [x] [Review][Patch] Complete the `planning` incident lifecycle [`backend/src/pipeline/dispatcher.py:247`] — **Fixed**: `run_remediation_pipeline()` transitions to `failed` on error; startup recovery via `recover_stale_remediation()` resets stranded `planning` incidents back to `diagnosed` for re-dispatch. State machine updated: `planning → diagnosed` is now a valid recovery transition.
+- [x] [Review][Patch] Count remediation planning against the dispatcher concurrency cap [`backend/src/pipeline/dispatcher.py:247`] — **Fixed**: `_register_remediation_pipeline()` inserts into `active_pipelines` (with nullable `queue_item_id` via migration 009) so remediation tasks count toward the shared parallelism cap. Cross-replica atomicity deferred to multi-replica milestone (documented in code comment).
+- [x] [Review][Patch] Treat `planning` as an active incident state [`backend/src/db/incidents.py:100`] — **Fixed**: `_ACTIVE_STATES` already includes `"planning"` (verified).
