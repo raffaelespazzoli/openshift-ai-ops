@@ -62,11 +62,11 @@ async def query_cluster_state(
         name: Optional specific resource name.
     """
     client = _get_rw_mcp_client()
-    arguments: dict[str, Any] = {"kind": resource_type, "namespace": namespace}
+    arguments: dict[str, Any] = {"apiVersion": "v1", "kind": resource_type, "namespace": namespace}
     if name:
         arguments["name"] = name
 
-    tool_name = "get_resource" if name else "get_resources"
+    tool_name = "resources_get" if name else "resources_list"
     try:
         result = await client.query(tool_name, arguments)
         return {
@@ -98,12 +98,11 @@ async def check_rbac_permissions(
     client = _get_rw_mcp_client()
     try:
         result = await client.query(
-            "get_resources",
+            "resources_list",
             {
+                "apiVersion": "v1",
                 "kind": "SelfSubjectAccessReview",
                 "namespace": namespace,
-                "verb": verb,
-                "resource": resource,
             },
         )
         return {
@@ -137,8 +136,8 @@ async def check_resource_quota(
     client = _get_rw_mcp_client()
     try:
         result = await client.query(
-            "get_resources",
-            {"kind": "ResourceQuota", "namespace": namespace},
+            "resources_list",
+            {"apiVersion": "v1", "kind": "ResourceQuota", "namespace": namespace},
         )
         return {
             "type": "quota_check",

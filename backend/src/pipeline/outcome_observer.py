@@ -230,8 +230,8 @@ async def _verify_affected_resources(
 
         for resource in artifact.affected_resources:
             evidence = await client.query(
-                tool_name="get_resources",
-                arguments={"resource": resource},
+                tool_name="resources_list",
+                arguments={"apiVersion": "v1", "kind": "Pod", "namespace": resource.split("/")[0] if "/" in resource else "default"},
             )
             from ..models.diagnosis import EvidenceArtifact
 

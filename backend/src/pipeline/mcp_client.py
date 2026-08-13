@@ -33,7 +33,7 @@ class ReadOnlyMCPClient:
         """Execute an MCP tool call, returning evidence or an evidence gap on timeout.
 
         Args:
-            tool_name: The MCP tool to invoke (e.g. 'get_resources', 'describe_resource').
+            tool_name: The MCP tool to invoke (e.g. 'resources_list', 'resources_get', 'pods_log').
             arguments: Arguments to pass to the tool.
             timeout: Override timeout in seconds. Uses settings default if None.
 

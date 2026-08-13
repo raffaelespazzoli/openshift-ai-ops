@@ -113,7 +113,7 @@ async def _validate_token_via_review(bearer_token: str) -> UserInfo:
             timeout=10.0,
         )
 
-    if resp.status_code != 200:
+    if resp.status_code not in (200, 201):
         logger.warning(
             "TokenReview request failed",
             extra={"status_code": resp.status_code},

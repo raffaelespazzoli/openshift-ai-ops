@@ -82,11 +82,11 @@ async def query_cluster_resources(
         name: Optional specific resource name.
     """
     client = _get_mcp_client()
-    arguments = {"kind": resource_type, "namespace": namespace}
+    arguments: dict[str, Any] = {"apiVersion": "v1", "kind": resource_type, "namespace": namespace}
     if name:
         arguments["name"] = name
 
-    tool_name = "get_resource" if name else "get_resources"
+    tool_name = "resources_get" if name else "resources_list"
     result = await client.query(tool_name, arguments)
 
     if isinstance(result, EvidenceGap):
@@ -124,15 +124,15 @@ async def get_resource_logs(
         tail_lines: Number of recent log lines to retrieve.
     """
     client = _get_mcp_client()
-    arguments = {
+    arguments: dict[str, Any] = {
         "namespace": namespace,
-        "pod": pod_name,
+        "name": pod_name,
         "tail": tail_lines,
     }
     if container:
         arguments["container"] = container
 
-    result = await client.query("get_logs", arguments)
+    result = await client.query("pods_log", arguments)
 
     if isinstance(result, EvidenceGap):
         return {
