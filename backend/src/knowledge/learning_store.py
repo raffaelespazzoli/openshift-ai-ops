@@ -21,9 +21,35 @@ from ..models.case_record import CaseRecordSummary
 logger = get_logger(Component.KNOWLEDGE)
 
 
-def _get_decay_half_life_days() -> float:
-    """Get the configured decay half-life from settings (Helm/env-configurable)."""
-    return get_knowledge_settings().learning_store_decay_half_life_days
+def compute_version_relevance(
+    case_ocp_version: str,
+    current_ocp_version: str,
+    same_major_weight: float = 1.0,
+    different_major_weight: float = 0.5,
+    minor_penalty_per_version: float = 0.02,
+) -> float:
+    """Compute version relevance between case and current cluster OCP versions.
+
+    Same major version: starts at same_major_weight, reduced by
+    minor_penalty_per_version for each minor version apart, clamped
+    to different_major_weight as floor.
+
+    Different major version: returns different_major_weight directly.
+    """
+    case_parts = case_ocp_version.split(".")
+    current_parts = current_ocp_version.split(".")
+    case_major = case_parts[0]
+    current_major = current_parts[0]
+
+    if case_major != current_major:
+        return different_major_weight
+
+    case_minor = int(case_parts[1]) if len(case_parts) > 1 else 0
+    current_minor = int(current_parts[1]) if len(current_parts) > 1 else 0
+    minor_distance = abs(current_minor - case_minor)
+
+    relevance = same_major_weight - (minor_penalty_per_version * minor_distance)
+    return max(relevance, different_major_weight)
 
 
 def apply_temporal_decay(
@@ -33,7 +59,8 @@ def apply_temporal_decay(
 ) -> float:
     """Compute effective confidence with temporal decay and version relevance.
 
-    Formula: effective_confidence = base_confidence × decay_factor(age) × version_relevance
+    Formula: effective_confidence = base_confidence × decay_factor(age)
+             × version_relevance(OCP_version_then vs OCP_version_now)
 
     Args:
         case: Dict with 'outcome_confidence', 'created_at', 'ocp_version'.
@@ -44,16 +71,21 @@ def apply_temporal_decay(
     Returns:
         Effective confidence score (0-1 range, may be slightly above if version matches).
     """
+    settings = get_knowledge_settings()
     effective_half_life = (
         decay_half_life_days if decay_half_life_days is not None
-        else _get_decay_half_life_days()
+        else settings.learning_store_decay_half_life_days
     )
     age_days = (datetime.now(timezone.utc) - case["created_at"]).days
     decay_factor = math.exp(-0.693 * age_days / effective_half_life)
 
-    case_major = case["ocp_version"].split(".")[0]
-    current_major = current_ocp_version.split(".")[0]
-    version_relevance = 1.0 if case_major == current_major else 0.5
+    version_relevance = compute_version_relevance(
+        case["ocp_version"],
+        current_ocp_version,
+        same_major_weight=settings.version_relevance_same_major,
+        different_major_weight=settings.version_relevance_different_major,
+        minor_penalty_per_version=settings.version_relevance_minor_penalty_per_version,
+    )
 
     return case["outcome_confidence"] * decay_factor * version_relevance
 
