@@ -75,7 +75,7 @@ development_status:
   epic-3-retrospective: done
 
   # Epic 4: Learning Store & Fast-Path
-  epic-4: in-progress
+  epic-4: done
   4-0-manifest-generation-pipeline-stage: done
   4-1-case-record-persistence-and-vector-embeddings: done
   4-2-temporal-decay-and-version-relevance: done
