@@ -158,6 +158,22 @@ async def trigger_rollback(
             await release_remediation_lock(lock_conn)
 
     try:
+        from ..db.case_records import downgrade_case_record
+
+        async with pool.acquire() as cr_conn:
+            await downgrade_case_record(
+                cr_conn,
+                incident_id,
+                new_confidence=0.2,
+                reason=f"rollback triggered by {user.username}",
+            )
+    except Exception:
+        logger.warning(
+            "Case record downgrade failed on rollback — non-fatal",
+            extra={"incident_id": str(incident_id)},
+        )
+
+    try:
         from ..api.event_bus import get_event_bus
         from ..models.events import EventNames, SSEEventData
 

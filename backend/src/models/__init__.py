@@ -48,7 +48,7 @@ from .policy_gate import (
     PolicyDimension,
     PolicyMatrix,
 )
-from .case_record import CaseRecordSummary
+from .case_record import CaseRecord, CaseRecordSummary
 from .execution import (
     ExecutionLog,
     ExecutionStepLog,
@@ -80,6 +80,7 @@ __all__ = [
     "ApiMeta",
     "ApiResponse",
     "BusEvent",
+    "CaseRecord",
     "CaseRecordSummary",
     "CompletenessResult",
     "CorrelationEvidence",

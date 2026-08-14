@@ -131,6 +131,24 @@ async def monitor_for_refire(
                     """,
                     incident_id,
                 )
+
+            try:
+                from ..db.case_records import downgrade_case_record
+
+                pool = await get_pool()
+                async with pool.acquire() as conn:
+                    await downgrade_case_record(
+                        conn,
+                        incident_id,
+                        new_confidence=0.2,
+                        reason="alert re-fired within monitoring window",
+                    )
+            except Exception:
+                logger.warning(
+                    "Case record downgrade failed on re-fire — non-fatal",
+                    extra={"incident_id": str(incident_id)},
+                )
+
             logger.warning(
                 "Re-fire detected for resolved incident",
                 extra={"incident_id": str(incident_id)},
