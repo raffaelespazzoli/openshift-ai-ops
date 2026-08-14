@@ -163,6 +163,50 @@ async def downgrade_case_record(
     return updated
 
 
+async def search_fast_path_candidates(
+    conn: asyncpg.Connection,
+    query_embedding: list[float],
+    threshold: float = 0.90,
+    top_k: int = 3,
+) -> list[dict]:
+    """Search for fast-path-eligible case records above the similarity threshold.
+
+    Filters for successful outcomes with fast_path_eligible = TRUE.
+    Returns full diagnosis_object and remediation_plan for replay.
+
+    Args:
+        conn: asyncpg connection with pgvector registered.
+        query_embedding: The query vector (alert signature embedding).
+        threshold: Minimum cosine similarity for fast-path eligibility.
+        top_k: Maximum number of candidates to return.
+
+    Returns:
+        List of dicts with case record data and similarity scores,
+        ordered by similarity (best match first).
+    """
+    rows = await conn.fetch(
+        """
+        SELECT id, alert_signature, root_cause_code, outcome,
+               outcome_confidence, ocp_version, created_at,
+               diagnosis_object, remediation_plan,
+               1 - (alert_signature_embedding <=> $1::vector) AS similarity
+        FROM case_records
+        WHERE fast_path_eligible = TRUE
+          AND outcome = 'success'
+          AND alert_signature_embedding IS NOT NULL
+          AND diagnosis_object IS NOT NULL
+          AND remediation_plan IS NOT NULL
+          AND 1 - (alert_signature_embedding <=> $1::vector) > $2
+        ORDER BY alert_signature_embedding <=> $1::vector
+        LIMIT $3
+        """,
+        str(query_embedding),
+        threshold,
+        top_k,
+    )
+    return [dict(row) for row in rows]
+
+
 async def get_case_record_by_incident(
     conn: asyncpg.Connection,
     incident_id: uuid.UUID,

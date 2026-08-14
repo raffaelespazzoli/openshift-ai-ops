@@ -169,7 +169,7 @@ async def list_incidents(
     offset_param = param_idx
 
     data_query = f"""
-        SELECT i.id, i.state, i.severity, i.created_at, i.updated_at
+        SELECT i.id, i.state, i.severity, i.created_at, i.updated_at, i.fast_path
         FROM incidents i
         {where_clause}
         ORDER BY i.created_at DESC
@@ -189,7 +189,8 @@ async def get_incident_detail(
     """
     incident_row = await conn.fetchrow(
         """
-        SELECT id, state, severity, created_at, updated_at
+        SELECT id, state, severity, created_at, updated_at,
+               fast_path, fast_path_similarity, fast_path_case_record_id
         FROM incidents
         WHERE id = $1
         """,
@@ -255,6 +256,36 @@ async def transition_incident_state(
             },
         )
     return applied
+
+
+async def record_fast_path(
+    conn: asyncpg.Connection | asyncpg.Pool,
+    incident_id: uuid.UUID,
+    case_record_id: uuid.UUID,
+    similarity: float,
+) -> None:
+    """Record fast-path metadata on an incident."""
+    await conn.execute(
+        """
+        UPDATE incidents
+        SET fast_path = TRUE,
+            fast_path_similarity = $2,
+            fast_path_case_record_id = $3,
+            updated_at = NOW()
+        WHERE id = $1
+        """,
+        incident_id,
+        similarity,
+        case_record_id,
+    )
+    logger.info(
+        "Fast-path metadata recorded on incident",
+        extra={
+            "incident_id": str(incident_id),
+            "case_record_id": str(case_record_id),
+            "similarity": similarity,
+        },
+    )
 
 
 async def record_resolved_alert(

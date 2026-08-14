@@ -197,6 +197,30 @@ async def _run_pipeline_task(item: dict) -> None:
         )
 
 
+async def _run_fast_path_task(item: dict, match) -> None:
+    """Wrapper for run_fast_path_pipeline that catches all errors.
+
+    On failure, the fast-path runner returns False and logs internally.
+    The dispatcher does not retry — the item was already dequeued and
+    the fast-path failure path handles cleanup.
+    """
+    from .fast_path import run_fast_path_pipeline
+
+    try:
+        await run_fast_path_pipeline(item, match)
+    except asyncio.CancelledError:
+        logger.info(
+            "Fast-path task cancelled during shutdown",
+            extra={"incident_id": str(item["incident_id"])},
+        )
+        raise
+    except Exception:
+        logger.exception(
+            "Fast-path task crashed unexpectedly",
+            extra={"incident_id": str(item["incident_id"])},
+        )
+
+
 async def _transition_incidents_to_diagnosing(
     conn: asyncpg.Connection | asyncpg.Pool,
     root_cause_event_id,
@@ -458,23 +482,43 @@ async def run_dispatcher() -> None:
 
                 item = await dequeue_next(conn)
                 if item:
-                    success = await _transition_incidents_to_diagnosing(
-                        conn, item["root_cause_event_id"], item["incident_id"]
-                    )
-                    if success:
-                        item_key = str(item["id"])
-                        _transition_retry_counts.pop(item_key, None)
-                        await dispatch_to_pipeline(item, conn)
-                    else:
-                        item_key = str(item["id"])
-                        _transition_retry_counts[item_key] = (
-                            _transition_retry_counts.get(item_key, 0) + 1
+                    # Fast-path check before full diagnosis pipeline
+                    fast_path_match = None
+                    try:
+                        from .fast_path import check_fast_path
+
+                        fast_path_match = await check_fast_path(item, conn)
+                    except Exception:
+                        logger.warning(
+                            "Fast-path check failed — proceeding with normal pipeline",
+                            extra={"incident_id": str(item["incident_id"])},
                         )
-                        if _transition_retry_counts[item_key] >= MAX_TRANSITION_RETRIES:
+
+                    if fast_path_match:
+                        task = asyncio.create_task(
+                            _run_fast_path_task(item, fast_path_match)
+                        )
+                        _inflight_tasks.add(task)
+                        _inflight_items[task] = item
+                        task.add_done_callback(_task_done)
+                    else:
+                        success = await _transition_incidents_to_diagnosing(
+                            conn, item["root_cause_event_id"], item["incident_id"]
+                        )
+                        if success:
+                            item_key = str(item["id"])
                             _transition_retry_counts.pop(item_key, None)
-                            await _mark_item_failed(conn, item["id"])
+                            await dispatch_to_pipeline(item, conn)
                         else:
-                            await _requeue_failed_transition(conn, item["id"])
+                            item_key = str(item["id"])
+                            _transition_retry_counts[item_key] = (
+                                _transition_retry_counts.get(item_key, 0) + 1
+                            )
+                            if _transition_retry_counts[item_key] >= MAX_TRANSITION_RETRIES:
+                                _transition_retry_counts.pop(item_key, None)
+                                await _mark_item_failed(conn, item["id"])
+                            else:
+                                await _requeue_failed_transition(conn, item["id"])
         except asyncio.CancelledError:
             logger.info("Dispatcher shutting down")
             raise
