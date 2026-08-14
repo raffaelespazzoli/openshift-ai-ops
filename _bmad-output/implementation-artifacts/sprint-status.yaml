@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-08-08
-last_updated: 2026-08-14T08:56:00Z
+last_updated: 2026-08-14T17:29:00Z
 project: openshift-ai-ops
 project_key: NOKEY
 tracking_system: file-system
@@ -75,11 +75,11 @@ development_status:
   epic-3-retrospective: done
 
   # Epic 4: Learning Store & Fast-Path
-  epic-4: backlog
-  4-0-manifest-generation-pipeline-stage: backlog
-  4-1-case-record-persistence-and-vector-embeddings: backlog
-  4-2-temporal-decay-and-version-relevance: backlog
-  4-3-fast-path-bypass-for-known-patterns: backlog
+  epic-4: in-progress
+  4-0-manifest-generation-pipeline-stage: ready-for-dev
+  4-1-case-record-persistence-and-vector-embeddings: ready-for-dev
+  4-2-temporal-decay-and-version-relevance: ready-for-dev
+  4-3-fast-path-bypass-for-known-patterns: ready-for-dev
   epic-4-retrospective: optional
 
   # Epic 5: Operational Web UI & Approval Workflow
