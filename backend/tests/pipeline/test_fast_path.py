@@ -394,6 +394,16 @@ class TestBuildSyntheticArtifact:
 
         assert str(artifact.id) != original_id
 
+    def test_preserves_original_diagnosis_object_id(self):
+        match = _make_match()
+        incident_id = uuid.uuid4()
+        original_id = match.diagnosis_object["id"]
+
+        artifact = _build_synthetic_artifact(match, incident_id)
+
+        assert str(artifact.diagnosis_object_id) == original_id
+        assert artifact.diagnosis_object_id != artifact.id
+
 
 class TestBuildReplayedPlan:
     """Tests for _build_replayed_plan()."""

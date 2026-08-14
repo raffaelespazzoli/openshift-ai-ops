@@ -4,7 +4,7 @@ baseline_commit: f149aee1ef450ff3c517a57a63e9e192b8a94086
 
 # Story 4.3: Fast-Path Bypass for Known Patterns
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -724,12 +724,11 @@ Claude Opus 4.6 (via Cursor)
 
 ## Code Review Record
 
-### Review Model Used
+### Review Round 1 — 2026-08-14
+**Review model:** Claude Opus 4.6 (via Cursor)
+**Fix model:** Claude Opus 4.6 (via Cursor)
 
-(Must differ from dev model to prevent self-review blind spots)
-
-### Review Findings
-
-### Decisions Needed / Decisions Taken
-
-### Fixes Applied
+#### Findings
+- [x] [Review][Patch] `diagnosis_object_id` traceability lost [`backend/src/pipeline/fast_path.py:263-264`] — After overwriting `diag["id"]` with a new UUID on line 263, line 264 reads back the same new value via `diag.get("id")` making `diagnosis_object_id` always equal to `id`. The original case record's diagnosis ID is lost. Fix: save original ID before overwrite. **Fixed**: saved original ID before overwriting; added `test_preserves_original_diagnosis_object_id` test.
+- [x] [Review][Patch] Multi-incident RCE siblings not transitioned [`backend/src/pipeline/fast_path.py:144-147`] — Task 5.8 specifies "Transition all incidents QUEUED → DIAGNOSED" but only the primary `item["incident_id"]` is transitioned. Sibling incidents sharing the same RCE remain stuck in `queued` state. The normal dispatch path handles this via `get_rce_incident_ids()`. **Fixed**: imported `get_rce_incident_ids` and loop-transitions all sibling incidents; primary failure still aborts.
+- [x] [Review][Patch] Unchecked state transitions after initial gate [`backend/src/pipeline/fast_path.py:181-182,207-209`] — DIAGNOSED→PLANNING and PLANNING→target transitions don't check return values, unlike the initial QUEUED→DIAGNOSED gate. If a concurrent modification causes the DB transition to fail silently, subsequent operations persist artifacts against an incident in an unexpected state. **Fixed**: both transitions now check return value and return False on failure.

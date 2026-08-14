@@ -24,7 +24,7 @@ from ..db.case_records import search_fast_path_candidates
 from ..db.diagnosis import persist_immutable_diagnosis
 from ..db.incidents import record_fast_path, transition_incident_state
 from ..db.policy_gate import persist_dry_run_result, persist_policy_decision
-from ..db.queue import mark_pipeline_complete
+from ..db.queue import get_rce_incident_ids, mark_pipeline_complete
 from ..db.remediation import persist_remediation_plan
 from ..knowledge.embeddings import embed_texts
 from ..knowledge.learning_store import apply_temporal_decay
@@ -140,17 +140,23 @@ async def run_fast_path_pipeline(
     try:
         pool = await get_pool()
         async with pool.acquire() as conn:
-            # --- Transition QUEUED → DIAGNOSED ---
+            # --- Transition QUEUED → DIAGNOSED (all sibling incidents) ---
             transition(IncidentState.QUEUED, IncidentState.DIAGNOSED)
-            transitioned = await transition_incident_state(
-                conn, incident_id, "queued", "diagnosed"
-            )
-            if not transitioned:
-                logger.warning(
-                    "Fast-path: could not transition to diagnosed",
-                    extra={"incident_id": str(incident_id)},
+            rce_id = item.get("root_cause_event_id")
+            sibling_ids = await get_rce_incident_ids(conn, rce_id) if rce_id else []
+            if not sibling_ids:
+                sibling_ids = [incident_id]
+
+            for sid in sibling_ids:
+                transitioned = await transition_incident_state(
+                    conn, sid, "queued", "diagnosed"
                 )
-                return False
+                if not transitioned and sid == incident_id:
+                    logger.warning(
+                        "Fast-path: could not transition primary to diagnosed",
+                        extra={"incident_id": str(incident_id)},
+                    )
+                    return False
 
             _emit_stage_event(incident_id, "fast_path_match", "diagnosed", {
                 "case_record_id": str(match.case_record_id),
@@ -179,7 +185,12 @@ async def run_fast_path_pipeline(
 
             # --- Transition DIAGNOSED → PLANNING ---
             transition(IncidentState.DIAGNOSED, IncidentState.PLANNING)
-            await transition_incident_state(conn, incident_id, "diagnosed", "planning")
+            if not await transition_incident_state(conn, incident_id, "diagnosed", "planning"):
+                logger.warning(
+                    "Fast-path: could not transition to planning",
+                    extra={"incident_id": str(incident_id)},
+                )
+                return False
 
             _emit_stage_event(incident_id, "dry_run", "planning", {})
 
@@ -205,9 +216,15 @@ async def run_fast_path_pipeline(
                 target_state = IncidentState.AWAITING_APPROVAL
 
             transition(IncidentState.PLANNING, target_state)
-            await transition_incident_state(
+            if not await transition_incident_state(
                 conn, incident_id, "planning", target_state.value
-            )
+            ):
+                logger.warning(
+                    "Fast-path: could not transition to %s",
+                    target_state.value,
+                    extra={"incident_id": str(incident_id)},
+                )
+                return False
 
             # --- Audit log ---
             await pipeline_audit_log(
@@ -259,9 +276,10 @@ def _build_synthetic_artifact(
     a new ID and links to the current incident.
     """
     diag = match.diagnosis_object.copy()
+    original_id = diag.get("id")
     new_id = uuid.uuid4()
     diag["id"] = str(new_id)
-    diag["diagnosis_object_id"] = diag.get("id", str(new_id))
+    diag["diagnosis_object_id"] = original_id or str(new_id)
     diag["incident_id"] = str(incident_id)
     diag["sealed_at"] = datetime.now(timezone.utc).isoformat()
 
