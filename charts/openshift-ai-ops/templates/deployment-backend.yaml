@@ -102,6 +102,12 @@ spec:
               value: "{{ .Values.learningStore.decayHalfLifeDays }}"
             - name: LEARNING_STORE_SIMILARITY_THRESHOLD
               value: "{{ .Values.learningStore.similarityThreshold }}"
+            - name: LEARNING_STORE_VERSION_RELEVANCE_SAME_MAJOR
+              value: "{{ .Values.learningStore.versionRelevanceSameMajor }}"
+            - name: LEARNING_STORE_VERSION_RELEVANCE_DIFFERENT_MAJOR
+              value: "{{ .Values.learningStore.versionRelevanceDifferentMajor }}"
+            - name: LEARNING_STORE_VERSION_RELEVANCE_MINOR_PENALTY
+              value: "{{ .Values.learningStore.versionRelevanceMinorPenalty }}"
             {{- if .Values.alertmanager.url }}
             - name: ALERTMANAGER_URL
               value: "{{ .Values.alertmanager.url }}"

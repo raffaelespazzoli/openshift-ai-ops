@@ -28,6 +28,9 @@ class KnowledgeSettings:
     runbooks_directory: str = _DEFAULT_RUNBOOKS_DIR
     learning_store_decay_half_life_days: float = 90.0
     learning_store_similarity_threshold: float = 0.75
+    version_relevance_same_major: float = 1.0
+    version_relevance_different_major: float = 0.5
+    version_relevance_minor_penalty_per_version: float = 0.02
 
     @classmethod
     def from_env(cls) -> KnowledgeSettings:
@@ -59,6 +62,15 @@ class KnowledgeSettings:
             learning_store_similarity_threshold=float(
                 os.environ.get("LEARNING_STORE_SIMILARITY_THRESHOLD", "0.75")
             ),
+            version_relevance_same_major=float(
+                os.environ.get("LEARNING_STORE_VERSION_RELEVANCE_SAME_MAJOR", "1.0")
+            ),
+            version_relevance_different_major=float(
+                os.environ.get("LEARNING_STORE_VERSION_RELEVANCE_DIFFERENT_MAJOR", "0.5")
+            ),
+            version_relevance_minor_penalty_per_version=float(
+                os.environ.get("LEARNING_STORE_VERSION_RELEVANCE_MINOR_PENALTY", "0.02")
+            ),
         )
 
 
@@ -77,3 +89,31 @@ def reset_knowledge_settings() -> None:
     """Reset cached settings (for testing)."""
     global _knowledge_settings
     _knowledge_settings = None
+
+
+def apply_overrides(overrides: dict[str, str]) -> None:
+    """Apply runtime DB overrides to the cached settings (AD-7 layered override).
+
+    Rebuilds the singleton with override values applied on top
+    of the current env-based defaults.
+    """
+    global _knowledge_settings
+    base = _knowledge_settings or KnowledgeSettings.from_env()
+    field_map: dict[str, tuple[str, type]] = {
+        "decay_half_life_days": ("learning_store_decay_half_life_days", float),
+        "similarity_threshold": ("learning_store_similarity_threshold", float),
+        "version_relevance_same_major": ("version_relevance_same_major", float),
+        "version_relevance_different_major": ("version_relevance_different_major", float),
+        "version_relevance_minor_penalty_per_version": (
+            "version_relevance_minor_penalty_per_version",
+            float,
+        ),
+    }
+    kwargs: dict[str, object] = {}
+    for field_name in KnowledgeSettings.__dataclass_fields__:
+        kwargs[field_name] = getattr(base, field_name)
+    for key, value in overrides.items():
+        if key in field_map:
+            attr_name, cast = field_map[key]
+            kwargs[attr_name] = cast(value)
+    _knowledge_settings = KnowledgeSettings(**kwargs)

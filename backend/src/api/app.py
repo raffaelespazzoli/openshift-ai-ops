@@ -26,6 +26,7 @@ from .event_bus import get_event_bus
 from .events import router as events_router
 from .health import router as health_router
 from .incidents import router as incidents_router
+from .learning_store_config import router as learning_store_config_router
 from .rollback import router as rollback_router
 from .webhooks import router as webhooks_router
 
@@ -98,6 +99,25 @@ def _init_skill_registry() -> None:
         logger.warning("Skill registry initialization failed — skills unavailable")
 
 
+async def _load_learning_store_overrides() -> None:
+    """Load runtime config overrides from DB (AD-7 layered override)."""
+    try:
+        from ..config.knowledge_settings import apply_overrides
+        from ..db.learning_store_config import get_all_config
+
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            overrides = await get_all_config(conn)
+        if overrides:
+            apply_overrides(overrides)
+            logger.info(
+                "Learning store config overrides loaded from DB",
+                extra={"keys": list(overrides.keys())},
+            )
+    except Exception:
+        logger.warning("Failed to load learning store config overrides — using defaults")
+
+
 async def _ingest_runbooks_on_startup() -> None:
     """Ingest bundled runbooks into pgvector on startup (AD-13).
 
@@ -141,6 +161,7 @@ async def lifespan(app: FastAPI):
     get_event_bus()
     await setup_checkpointer()
     await _init_pgvector()
+    await _load_learning_store_overrides()
     await _ingest_runbooks_on_startup()
     _init_skill_registry()
     sealing_task = asyncio.create_task(_background_sealing_sweep())
@@ -257,6 +278,7 @@ def create_app() -> FastAPI:
     app.include_router(events_router)
     app.include_router(approval_router)
     app.include_router(rollback_router)
+    app.include_router(learning_store_config_router)
 
     return app
 

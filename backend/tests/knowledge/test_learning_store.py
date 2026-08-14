@@ -237,3 +237,64 @@ class TestQueryLearningStore:
         assert len(results) == 1
         # Different major version (3 vs 4) should halve confidence
         assert results[0].effective_confidence < 0.5
+
+    @pytest.mark.unit
+    async def test_configurable_weights_affect_ranking(self):
+        """Configurable weights change ranking when version penalty is increased."""
+        now = datetime.now(timezone.utc)
+        mock_cases = [
+            {
+                "id": uuid.uuid4(),
+                "alert_signature": "KubePodCrashLooping",
+                "root_cause_code": "workload/crash-loop",
+                "outcome": "success",
+                "outcome_confidence": 0.8,
+                "ocp_version": "4.15.0",
+                "created_at": now - timedelta(days=60),
+                "similarity": 0.90,
+            },
+            {
+                "id": uuid.uuid4(),
+                "alert_signature": "KubePodCrashLooping",
+                "root_cause_code": "workload/oom",
+                "outcome": "success",
+                "outcome_confidence": 0.9,
+                "ocp_version": "3.11.0",
+                "created_at": now - timedelta(days=5),
+                "similarity": 0.88,
+            },
+        ]
+        mock_embedding = [[0.1] * 1536]
+        mock_conn = AsyncMock()
+
+        from src.config.knowledge_settings import KnowledgeSettings
+
+        # With default weights: same-version case has decay but v_r=1.0;
+        # different-major case is recent but v_r=0.5
+        with (
+            patch("src.knowledge.learning_store.embed_texts", new_callable=AsyncMock, return_value=mock_embedding),
+            patch("src.knowledge.learning_store.search_similar_cases", new_callable=AsyncMock, return_value=mock_cases),
+        ):
+            results_default = await query_learning_store(
+                "pod crash", mock_conn, current_ocp_version="4.15.0"
+            )
+
+        # Now with very harsh different-major penalty
+        custom_settings = KnowledgeSettings(
+            version_relevance_different_major=0.1,
+            learning_store_decay_half_life_days=90.0,
+        )
+        with (
+            patch("src.knowledge.learning_store.embed_texts", new_callable=AsyncMock, return_value=mock_embedding),
+            patch("src.knowledge.learning_store.search_similar_cases", new_callable=AsyncMock, return_value=mock_cases),
+            patch("src.knowledge.learning_store.get_knowledge_settings", return_value=custom_settings),
+        ):
+            results_harsh = await query_learning_store(
+                "pod crash", mock_conn, current_ocp_version="4.15.0"
+            )
+
+        assert len(results_default) == 2
+        assert len(results_harsh) == 2
+        # With harsh penalty, the different-major case should rank lower
+        assert results_harsh[0].ocp_version.startswith("4")
+        assert results_harsh[1].ocp_version.startswith("3")

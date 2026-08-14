@@ -128,6 +128,9 @@ policyGate:
 learningStore:
   decayHalfLifeDays: 90
   similarityThreshold: 0.75
+  versionRelevanceSameMajor: 1.0
+  versionRelevanceDifferentMajor: 0.5
+  versionRelevanceMinorPenalty: 0.02
 
 postgresql:
   replicaCount: 1
