@@ -35,6 +35,7 @@ from src.pipeline.remediation_graph import (
     dry_run_node,
     execute_node,
     freshness_gate_node,
+    manifest_generation_node,
     observe_node,
     plan_node,
     policy_gate_node,
@@ -172,6 +173,82 @@ class TestGraphCompilation:
         builder = build_remediation_graph()
         graph = builder.compile()
         assert "policy_gate" in graph.nodes
+
+
+class TestGraphHasManifestGenerationNode:
+    """Story 4.0: Graph includes manifest_generation between skeptic and dry_run."""
+
+    @pytest.mark.unit
+    def test_graph_has_manifest_generation_node(self):
+        builder = build_remediation_graph()
+        graph = builder.compile()
+        assert "manifest_generation" in graph.nodes
+
+    @pytest.mark.unit
+    def test_manifest_generation_between_skeptic_and_dry_run(self):
+        builder = build_remediation_graph()
+        graph = builder.compile()
+        nodes = list(graph.nodes.keys())
+        skeptic_idx = nodes.index("skeptic_validation")
+        manifest_idx = nodes.index("manifest_generation")
+        dry_run_idx = nodes.index("dry_run")
+        assert skeptic_idx < manifest_idx < dry_run_idx
+
+
+class TestManifestGenerationNode:
+    """Story 4.0: manifest_generation_node invokes generate_manifests."""
+
+    @pytest.mark.unit
+    async def test_manifest_node_updates_plan(self):
+        iid = uuid.uuid4()
+        plan = _make_plan(
+            incident_id=iid,
+            steps=[
+                RemediationStep(
+                    order=1,
+                    description="Apply fix",
+                    command="oc apply -f fix.yaml",
+                    resource="deployments/test",
+                    action="apply",
+                    expected_outcome="Fixed",
+                ),
+            ],
+        )
+        manifest_plan = plan.model_copy(
+            update={
+                "steps": [
+                    plan.steps[0].model_copy(
+                        update={"manifest_path": "/tmp/test/step-1.yaml"},
+                    ),
+                ],
+            },
+        )
+
+        state = _make_initial_state(str(iid))
+        state["remediation_plan"] = plan.model_dump(mode="json")
+        state["stage"] = "validated"
+
+        with (
+            patch(
+                "src.pipeline.manifest_generator.generate_manifests",
+                new_callable=AsyncMock,
+                return_value=manifest_plan,
+            ),
+            patch(
+                "src.pipeline.remediation_graph.pipeline_audit_log",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.remediation_graph._emit_stage_sse",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await manifest_generation_node(state)
+
+        assert "remediation_plan" in result
+        result_plan = RemediationPlan.model_validate(result["remediation_plan"])
+        assert result_plan.steps[0].manifest_path == "/tmp/test/step-1.yaml"
+        assert result["stage"] == "manifests_generated"
 
 
 class TestPlanNode:
@@ -340,7 +417,7 @@ class TestSkepticValidationNode:
 
 
 class TestFullGraphExecution:
-    """Full graph execution with mocked planner and skeptic produces validated state."""
+    """Full graph execution with mocked planner, skeptic, and manifest generation."""
 
     @pytest.mark.unit
     async def test_full_graph_produces_plan_and_verdict(self):
@@ -378,6 +455,11 @@ class TestFullGraphExecution:
             patch(
                 "src.pipeline.remediation_skeptic_validation.run_remediation_skeptic_validation",
                 mock_validation,
+            ),
+            patch(
+                "src.pipeline.manifest_generator.generate_manifests",
+                new_callable=AsyncMock,
+                return_value=plan,
             ),
             patch(
                 "src.pipeline.dry_run.run_dry_run_preflight",
@@ -441,6 +523,11 @@ class TestFullGraphExecution:
             patch(
                 "src.pipeline.remediation_skeptic_validation.run_remediation_skeptic_validation",
                 mock_validation,
+            ),
+            patch(
+                "src.pipeline.manifest_generator.generate_manifests",
+                new_callable=AsyncMock,
+                return_value=plan,
             ),
             patch(
                 "src.pipeline.dry_run.run_dry_run_preflight",
@@ -566,7 +653,7 @@ class TestPolicyGateNode:
 
 
 class TestFullGraphWithPolicyGate:
-    """Full graph: plan → skeptic → dry_run → policy_gate produces decision."""
+    """Full graph: plan → skeptic → manifest_generation → dry_run → policy_gate."""
 
     @pytest.mark.unit
     async def test_full_graph_produces_policy_decision(self):
@@ -605,6 +692,11 @@ class TestFullGraphWithPolicyGate:
             patch(
                 "src.pipeline.remediation_skeptic_validation.run_remediation_skeptic_validation",
                 mock_validation,
+            ),
+            patch(
+                "src.pipeline.manifest_generator.generate_manifests",
+                new_callable=AsyncMock,
+                return_value=plan,
             ),
             patch(
                 "src.pipeline.dry_run.run_dry_run_preflight",

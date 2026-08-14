@@ -249,3 +249,129 @@ class TestRemediationPlan:
         assert RemediationStep is not None
         assert Precondition is not None
         assert RiskLevel is not None
+
+
+class TestRemediationStepManifestFields:
+    """Story 4.0: manifest_path and manifest_generation_failed field tests."""
+
+    @pytest.mark.unit
+    def test_manifest_path_defaults_to_none(self):
+        step = _make_step()
+        assert step.manifest_path is None
+
+    @pytest.mark.unit
+    def test_manifest_generation_failed_defaults_to_false(self):
+        step = _make_step()
+        assert step.manifest_generation_failed is False
+
+    @pytest.mark.unit
+    def test_manifest_path_accepts_string(self):
+        step = _make_step(manifest_path="/tmp/aiops-manifests-xyz/step-1.yaml")
+        assert step.manifest_path == "/tmp/aiops-manifests-xyz/step-1.yaml"
+
+    @pytest.mark.unit
+    def test_manifest_generation_failed_accepts_true(self):
+        step = _make_step(manifest_generation_failed=True)
+        assert step.manifest_generation_failed is True
+
+    @pytest.mark.unit
+    def test_step_with_manifest_fields_serializes(self):
+        step = _make_step(
+            manifest_path="/tmp/test/step-1.yaml",
+            manifest_generation_failed=False,
+        )
+        data = step.model_dump(mode="json")
+        assert data["manifest_path"] == "/tmp/test/step-1.yaml"
+        assert data["manifest_generation_failed"] is False
+
+    @pytest.mark.unit
+    def test_step_with_manifest_fields_roundtrip(self):
+        step = _make_step(
+            manifest_path="/tmp/test/step-1.yaml",
+            manifest_generation_failed=True,
+        )
+        data = step.model_dump(mode="json")
+        restored = RemediationStep.model_validate(data)
+        assert restored.manifest_path == step.manifest_path
+        assert restored.manifest_generation_failed == step.manifest_generation_failed
+
+    @pytest.mark.unit
+    def test_existing_step_without_manifest_fields_deserializes(self):
+        data = {
+            "order": 1,
+            "description": "Do something",
+            "command": "cmd",
+            "resource": "pod/test",
+            "action": "apply",
+            "expected_outcome": "done",
+        }
+        step = RemediationStep.model_validate(data)
+        assert step.manifest_path is None
+        assert step.manifest_generation_failed is False
+
+
+class TestPlanHashExcludesManifestFields:
+    """Story 4.0: plan_hash() must be stable regardless of manifest fields."""
+
+    @pytest.mark.unit
+    def test_hash_unchanged_with_manifest_path(self):
+        plan_without = _make_plan()
+        hash_without = plan_without.plan_hash()
+
+        step_with_manifest = _make_step(
+            manifest_path="/tmp/aiops-manifests-abc/step-1.yaml",
+        )
+        plan_with = _make_plan(steps=[step_with_manifest])
+        hash_with = plan_with.plan_hash()
+
+        assert hash_without == hash_with
+
+    @pytest.mark.unit
+    def test_hash_unchanged_with_manifest_generation_failed(self):
+        plan_without = _make_plan()
+        hash_without = plan_without.plan_hash()
+
+        step_with_failed = _make_step(manifest_generation_failed=True)
+        plan_with = _make_plan(steps=[step_with_failed])
+        hash_with = plan_with.plan_hash()
+
+        assert hash_without == hash_with
+
+    @pytest.mark.unit
+    def test_hash_unchanged_with_both_manifest_fields(self):
+        plan_without = _make_plan()
+        hash_without = plan_without.plan_hash()
+
+        step_with_both = _make_step(
+            manifest_path="/tmp/test/step-1.yaml",
+            manifest_generation_failed=True,
+        )
+        plan_with = _make_plan(steps=[step_with_both])
+        hash_with = plan_with.plan_hash()
+
+        assert hash_without == hash_with
+
+    @pytest.mark.unit
+    def test_hash_changes_when_plan_substance_changes(self):
+        plan1 = _make_plan()
+        plan2 = _make_plan(
+            steps=[_make_step(description="Different description")],
+        )
+        assert plan1.plan_hash() != plan2.plan_hash()
+
+    @pytest.mark.unit
+    def test_hash_excludes_manifest_fields_in_rollback_steps(self):
+        rollback_step = _make_step(
+            order=1, description="Rollback", action="rollback",
+        )
+        plan_without = _make_plan(rollback_plan=[rollback_step])
+        hash_without = plan_without.plan_hash()
+
+        rollback_with_manifest = _make_step(
+            order=1, description="Rollback", action="rollback",
+            manifest_path="/tmp/test/rollback-1.yaml",
+        )
+        plan_with = _make_plan(rollback_plan=[rollback_with_manifest])
+        hash_with = plan_with.plan_hash()
+
+        assert hash_without == hash_with

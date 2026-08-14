@@ -285,6 +285,118 @@ class TestDryRunInformationalSteps:
         assert result.step_results[1].skipped is False
 
 
+class TestDryRunManifestPath:
+    """Story 4.0: steps with manifest_path send manifest body to MCP."""
+
+    @pytest.mark.unit
+    async def test_manifest_content_sent_to_apply_resource(self, tmp_path):
+        manifest_file = tmp_path / "step-1.yaml"
+        manifest_file.write_text("apiVersion: v1\nkind: ConfigMap\n")
+
+        mock_client = AsyncMock()
+        mock_client.query = AsyncMock(
+            return_value="configmap/test configured (server dry run)",
+        )
+
+        steps = [
+            RemediationStep(
+                order=1,
+                description="Apply manifest",
+                command="oc apply -f fix.yaml",
+                resource="configmap/test",
+                action="apply",
+                expected_outcome="Applied",
+                manifest_path=str(manifest_file),
+            ),
+        ]
+        plan = _make_plan(steps=steps)
+        artifact = _make_artifact(plan.incident_id)
+
+        result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
+
+        assert result.dry_run_passed is True
+        assert result.step_results[0].success is True
+        mock_client.query.assert_called_once_with(
+            "apply_resource",
+            {"manifest": "apiVersion: v1\nkind: ConfigMap\n", "dry_run": "server"},
+        )
+
+    @pytest.mark.unit
+    async def test_manifest_generation_failed_returns_failure(self):
+        mock_client = AsyncMock()
+
+        steps = [
+            RemediationStep(
+                order=1,
+                description="Failed manifest step",
+                command="oc apply -f fix.yaml",
+                resource="deployment/test",
+                action="apply",
+                expected_outcome="Fixed",
+                manifest_generation_failed=True,
+            ),
+        ]
+        plan = _make_plan(steps=steps)
+        artifact = _make_artifact(plan.incident_id)
+
+        result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
+
+        assert result.dry_run_passed is False
+        assert result.step_results[0].success is False
+        assert "Manifest generation failed" in result.step_results[0].message
+        mock_client.query.assert_not_called()
+
+    @pytest.mark.unit
+    async def test_missing_manifest_file_returns_failure(self):
+        mock_client = AsyncMock()
+
+        steps = [
+            RemediationStep(
+                order=1,
+                description="Missing manifest",
+                command="oc apply -f fix.yaml",
+                resource="deployment/test",
+                action="apply",
+                expected_outcome="Fixed",
+                manifest_path="/tmp/nonexistent/step-1.yaml",
+            ),
+        ]
+        plan = _make_plan(steps=steps)
+        artifact = _make_artifact(plan.incident_id)
+
+        result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
+
+        assert result.dry_run_passed is False
+        assert result.step_results[0].success is False
+        assert "Manifest file not found" in result.step_results[0].message
+
+    @pytest.mark.unit
+    async def test_step_without_manifest_uses_command(self):
+        mock_client = AsyncMock()
+        mock_client.query = AsyncMock(return_value="resource applied (dry-run)")
+
+        steps = [
+            RemediationStep(
+                order=1,
+                description="No manifest",
+                command="oc apply -f fix.yaml",
+                resource="deployment/test",
+                action="apply",
+                expected_outcome="Fixed",
+            ),
+        ]
+        plan = _make_plan(steps=steps)
+        artifact = _make_artifact(plan.incident_id)
+
+        result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
+
+        assert result.dry_run_passed is True
+        mock_client.query.assert_called_once_with(
+            "apply_resource",
+            {"command": "oc apply -f fix.yaml", "resource": "deployment/test", "dry_run": "server"},
+        )
+
+
 class TestDryRunImperativeSteps:
     """Imperative actions (restart, scale, patch, etc.) are not dry-runnable."""
 

@@ -218,6 +218,115 @@ class TestInformationalSteps:
         assert log.mcp_calls[0]["step_order"] == 2
 
 
+class TestManifestExecution:
+    """Story 4.0: steps with manifest_path apply manifest content via MCP."""
+
+    async def test_manifest_path_sends_manifest(self, tmp_path):
+        manifest_file = tmp_path / "step-1.yaml"
+        manifest_file.write_text("apiVersion: v1\nkind: ConfigMap\n")
+
+        steps = [
+            RemediationStep(
+                order=1,
+                description="Apply manifest",
+                command="oc apply -f fix.yaml",
+                resource="deployment/app",
+                action="apply",
+                expected_outcome="Applied",
+                manifest_path=str(manifest_file),
+            ),
+        ]
+        plan = _make_plan(steps=steps)
+        mcp_client = AsyncMock()
+        mcp_client.execute = AsyncMock(return_value="manifest applied")
+
+        log = await execute_remediation(plan, mcp_client)
+
+        assert log.status == "completed"
+        assert log.steps[0].success is True
+        mcp_client.execute.assert_called_once_with(
+            tool_name="apply_resource",
+            arguments={"manifest": "apiVersion: v1\nkind: ConfigMap\n"},
+        )
+
+    async def test_step_without_manifest_uses_command(self):
+        steps = [
+            RemediationStep(
+                order=1,
+                description="Apply fix",
+                command="kubectl apply -f fix.yaml",
+                resource="deployment/app",
+                action="apply",
+                expected_outcome="Fixed",
+            ),
+        ]
+        plan = _make_plan(steps=steps)
+        mcp_client = AsyncMock()
+        mcp_client.execute = AsyncMock(return_value="applied")
+
+        log = await execute_remediation(plan, mcp_client)
+
+        assert log.status == "completed"
+        mcp_client.execute.assert_called_once_with(
+            tool_name="apply_resource",
+            arguments={"command": "kubectl apply -f fix.yaml"},
+        )
+
+    async def test_missing_manifest_file_fails_step(self):
+        steps = [
+            RemediationStep(
+                order=1,
+                description="Missing manifest",
+                command="oc apply -f fix.yaml",
+                resource="deployment/app",
+                action="apply",
+                expected_outcome="Applied",
+                manifest_path="/tmp/nonexistent/step-1.yaml",
+            ),
+        ]
+        plan = _make_plan(steps=steps)
+        mcp_client = AsyncMock()
+
+        log = await execute_remediation(plan, mcp_client)
+
+        assert log.status == "failed"
+        assert log.steps[0].success is False
+        assert "Manifest file not found" in log.steps[0].error
+        mcp_client.execute.assert_not_called()
+
+    async def test_mcp_call_records_execution_path(self, tmp_path):
+        manifest_file = tmp_path / "step-1.yaml"
+        manifest_file.write_text("apiVersion: v1\nkind: Pod\n")
+
+        steps = [
+            RemediationStep(
+                order=1,
+                description="Apply manifest",
+                command="oc apply -f fix.yaml",
+                resource="pod/test",
+                action="apply",
+                expected_outcome="Applied",
+                manifest_path=str(manifest_file),
+            ),
+        ]
+        plan = _make_plan(steps=steps)
+        mcp_client = AsyncMock()
+        mcp_client.execute = AsyncMock(return_value="ok")
+
+        log = await execute_remediation(plan, mcp_client)
+
+        assert log.mcp_calls[0]["execution_path"] == "manifest"
+
+    async def test_command_path_recorded(self):
+        plan = _make_plan()
+        mcp_client = AsyncMock()
+        mcp_client.execute = AsyncMock(return_value="ok")
+
+        log = await execute_remediation(plan, mcp_client)
+
+        assert log.mcp_calls[0]["execution_path"] == "command"
+
+
 class TestExecutionTimestamps:
     """Execution logs have proper timestamps."""
 

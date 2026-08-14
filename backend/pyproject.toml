@@ -22,6 +22,7 @@ dependencies = [
     "uvicorn",
     "python-json-logger>=3.0",
     "mcp",
+    "pyyaml",
 ]
 
 [project.optional-dependencies]
