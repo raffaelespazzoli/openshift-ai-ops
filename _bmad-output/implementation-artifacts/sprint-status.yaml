@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-08-08
-last_updated: 2026-08-14T19:50:00Z
+last_updated: 2026-08-14T19:55:00Z
 project: openshift-ai-ops
 project_key: NOKEY
 tracking_system: file-system
@@ -78,7 +78,7 @@ development_status:
   epic-4: in-progress
   4-0-manifest-generation-pipeline-stage: done
   4-1-case-record-persistence-and-vector-embeddings: done
-  4-2-temporal-decay-and-version-relevance: review
+  4-2-temporal-decay-and-version-relevance: done
   4-3-fast-path-bypass-for-known-patterns: ready-for-dev
   epic-4-retrospective: optional
 

@@ -195,3 +195,15 @@ class TestApplyTemporalDecayWithConfigurableWeights:
         with patch("src.knowledge.learning_store.get_knowledge_settings", return_value=custom_settings):
             result = apply_temporal_decay(case, current_ocp_version="4.15.0")
         assert abs(result - 0.5) < 0.05
+
+    @pytest.mark.unit
+    def test_zero_half_life_clamped_to_floor(self):
+        """Zero or negative half-life is clamped to 1.0 day minimum (no ZeroDivisionError)."""
+        case = {
+            "outcome_confidence": 1.0,
+            "created_at": datetime.now(timezone.utc) - timedelta(days=1),
+            "ocp_version": "4.15.0",
+        }
+        result = apply_temporal_decay(case, current_ocp_version="4.15.0", decay_half_life_days=0.0)
+        assert result >= 0.0
+        assert result <= 1.0

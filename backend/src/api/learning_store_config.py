@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 
 from ..config.knowledge_settings import (
     apply_overrides,
@@ -57,10 +56,13 @@ async def get_learning_store_config(
     )
 
 
-class ConfigUpdateRequest(BaseModel):
-    """Request body for PUT config — arbitrary float config keys."""
-
-    model_config = {"extra": "allow"}
+_VALUE_CONSTRAINTS: dict[str, tuple[float, float]] = {
+    "decay_half_life_days": (1.0, 3650.0),
+    "similarity_threshold": (0.0, 1.0),
+    "version_relevance_same_major": (0.0, 1.0),
+    "version_relevance_different_major": (0.0, 1.0),
+    "version_relevance_minor_penalty_per_version": (0.0, 1.0),
+}
 
 
 @router.put("/api/v1/config/learning-store")
@@ -82,7 +84,7 @@ async def update_learning_store_config(
 
     for key, value in body.items():
         try:
-            float(value)
+            numeric_val = float(value)
         except (TypeError, ValueError):
             error = ApiError(
                 error="Validation error",
@@ -90,6 +92,16 @@ async def update_learning_store_config(
                 detail={"field": key, "message": f"Value must be numeric, got: {value!r}"},
             )
             return JSONResponse(status_code=422, content=error.model_dump(mode="json"))
+
+        if key in _VALUE_CONSTRAINTS:
+            lo, hi = _VALUE_CONSTRAINTS[key]
+            if numeric_val < lo or numeric_val > hi:
+                error = ApiError(
+                    error="Validation error",
+                    code=ERROR_VALIDATION,
+                    detail={"field": key, "message": f"Value must be between {lo} and {hi}, got: {numeric_val}"},
+                )
+                return JSONResponse(status_code=422, content=error.model_dump(mode="json"))
 
     pool = await get_pool()
     async with pool.acquire() as conn:

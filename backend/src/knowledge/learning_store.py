@@ -76,6 +76,7 @@ def apply_temporal_decay(
         decay_half_life_days if decay_half_life_days is not None
         else settings.learning_store_decay_half_life_days
     )
+    effective_half_life = max(effective_half_life, 1.0)
     age_days = (datetime.now(timezone.utc) - case["created_at"]).days
     decay_factor = math.exp(-0.693 * age_days / effective_half_life)
 

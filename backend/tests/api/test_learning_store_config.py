@@ -122,3 +122,24 @@ async def test_put_multiple_keys_at_once(async_client):
     data = response.json()["data"]
     assert data["decay_half_life_days"] == 45.0
     assert data["version_relevance_same_major"] == 0.95
+
+
+async def test_put_zero_half_life_returns_422(async_client):
+    """PUT with decay_half_life_days=0 is rejected (would cause ZeroDivisionError)."""
+    response = await async_client.put(
+        "/api/v1/config/learning-store",
+        json={"decay_half_life_days": 0},
+    )
+    assert response.status_code == 422
+    body = response.json()
+    assert body["code"] == "VALIDATION_ERROR"
+    assert "field" in body["detail"]
+
+
+async def test_put_negative_half_life_returns_422(async_client):
+    """PUT with negative decay_half_life_days is rejected."""
+    response = await async_client.put(
+        "/api/v1/config/learning-store",
+        json={"decay_half_life_days": -10.0},
+    )
+    assert response.status_code == 422
