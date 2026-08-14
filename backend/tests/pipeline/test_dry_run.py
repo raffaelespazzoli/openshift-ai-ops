@@ -159,6 +159,59 @@ class TestDryRunPartialFail:
         assert result.step_results[0].error_detail is not None
 
 
+class TestDryRunErrorPayload:
+    """MCP responses containing error indicators must be treated as failures."""
+
+    @pytest.mark.unit
+    async def test_error_payload_without_exception_fails_step(self):
+        """Server-side denial returned as text, not an exception."""
+        mock_client = AsyncMock()
+        mock_client.query = AsyncMock(
+            return_value="Error from server: admission webhook denied the request"
+        )
+
+        plan = _make_plan()
+        artifact = _make_artifact(plan.incident_id)
+
+        result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
+
+        assert result.dry_run_passed is False
+        assert len(result.dry_run_errors) >= 1
+        assert result.step_results[0].success is False
+        assert result.step_results[0].error_detail is not None
+        assert "admission webhook" in result.step_results[0].error_detail.lower()
+
+    @pytest.mark.unit
+    async def test_forbidden_text_response_fails_step(self):
+        mock_client = AsyncMock()
+        mock_client.query = AsyncMock(
+            return_value="forbidden: User 'system:serviceaccount:ns:sa' cannot create"
+        )
+
+        plan = _make_plan()
+        artifact = _make_artifact(plan.incident_id)
+
+        result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
+
+        assert result.dry_run_passed is False
+        assert result.step_results[0].success is False
+
+    @pytest.mark.unit
+    async def test_clean_response_still_passes(self):
+        mock_client = AsyncMock()
+        mock_client.query = AsyncMock(
+            return_value="deployment.apps/test configured (server dry run)"
+        )
+
+        plan = _make_plan()
+        artifact = _make_artifact(plan.incident_id)
+
+        result = await run_dry_run_preflight(plan, artifact, mcp_client=mock_client)
+
+        assert result.dry_run_passed is True
+        assert result.step_results[0].success is True
+
+
 class TestDryRunRBACDenied:
     @pytest.mark.unit
     async def test_rbac_denied_via_dry_run_403(self):

@@ -41,15 +41,19 @@ async def persist_immutable_diagnosis(
     """
     record_id = uuid.uuid4()
     incident_uuid = uuid.UUID(str(incident_id)) if isinstance(incident_id, str) else incident_id
+    diagnosis_object_id = diagnosis.get("id")
+    diag_obj_uuid = uuid.UUID(str(diagnosis_object_id)) if diagnosis_object_id else None
 
     try:
         await conn.execute(
             """
-            INSERT INTO immutable_diagnoses (id, incident_id, diagnosis, skeptic_verdict, sealed_at, created_at)
-            VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6)
+            INSERT INTO immutable_diagnoses
+                (id, incident_id, diagnosis_object_id, diagnosis, skeptic_verdict, sealed_at, created_at)
+            VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7)
             """,
             record_id,
             incident_uuid,
+            diag_obj_uuid,
             json.dumps(diagnosis, default=str),
             json.dumps(skeptic_verdict, default=str),
             sealed_at,

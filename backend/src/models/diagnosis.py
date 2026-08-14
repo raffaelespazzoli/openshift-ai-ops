@@ -176,6 +176,7 @@ class ImmutableDiagnosisArtifact(BaseModel):
     model_config = {"frozen": True, "arbitrary_types_allowed": True}
 
     id: uuid.UUID
+    diagnosis_object_id: uuid.UUID | None = None
     incident_id: uuid.UUID
     root_cause_component: str
     failure_mode: str
@@ -254,6 +255,7 @@ class ImmutableDiagnosisArtifact(BaseModel):
         """
         return cls(
             id=diag.id,
+            diagnosis_object_id=diag.id,
             incident_id=diag.incident_id,
             root_cause_component=diag.root_cause_component,
             failure_mode=diag.failure_mode,

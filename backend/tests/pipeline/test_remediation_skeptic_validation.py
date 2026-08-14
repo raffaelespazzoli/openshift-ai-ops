@@ -296,3 +296,64 @@ class TestMaxRoundsEnforced:
             _, verdict = await run_remediation_skeptic_validation(plan, artifact)
 
         assert verdict.passed is True
+
+
+class TestRebuttalFailureDegradation:
+    """When planner rebuttal fails, verdict must be marked degraded."""
+
+    @pytest.mark.unit
+    async def test_rebuttal_exception_marks_verdict_degraded(self):
+        iid = uuid.uuid4()
+        plan = _make_plan(incident_id=iid)
+        artifact = _make_artifact(incident_id=iid)
+
+        mock_skeptic = AsyncMock(return_value=_make_challenge())
+        mock_rebuttal = AsyncMock(side_effect=RuntimeError("LLM call failed"))
+
+        with (
+            patch(
+                "src.agents.remediation_skeptic.run_remediation_skeptic",
+                mock_skeptic,
+            ),
+            patch(
+                "src.agents.planner.run_planner_rebuttal",
+                mock_rebuttal,
+            ),
+        ):
+            result_plan, verdict = await run_remediation_skeptic_validation(
+                plan, artifact
+            )
+
+        assert verdict.passed is True
+        assert verdict.degraded is True
+        assert verdict.verdict_note == "rebuttal_failed"
+        assert verdict.rounds_completed == 1
+        assert any(
+            entry.get("rebuttal_failed") for entry in verdict.challenge_history
+        )
+        assert result_plan.plan_hash() == plan.plan_hash()
+
+    @pytest.mark.unit
+    async def test_clean_validation_not_degraded(self):
+        iid = uuid.uuid4()
+        plan = _make_plan(incident_id=iid)
+        artifact = _make_artifact(incident_id=iid)
+
+        mock_skeptic = AsyncMock(return_value=_make_challenge())
+        mock_rebuttal = AsyncMock(return_value=plan)
+
+        with (
+            patch(
+                "src.agents.remediation_skeptic.run_remediation_skeptic",
+                mock_skeptic,
+            ),
+            patch(
+                "src.agents.planner.run_planner_rebuttal",
+                mock_rebuttal,
+            ),
+        ):
+            _, verdict = await run_remediation_skeptic_validation(plan, artifact)
+
+        assert verdict.passed is True
+        assert verdict.degraded is False
+        assert verdict.verdict_note is None

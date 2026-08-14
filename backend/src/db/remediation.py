@@ -88,7 +88,7 @@ async def load_immutable_artifact(
         ValueError: If no immutable diagnosis exists for the incident.
     """
     row = await conn.fetchrow(
-        "SELECT id, diagnosis, skeptic_verdict, sealed_at "
+        "SELECT id, diagnosis_object_id, diagnosis, skeptic_verdict, sealed_at "
         "FROM immutable_diagnoses WHERE incident_id = $1",
         incident_id,
     )
@@ -99,8 +99,12 @@ async def load_immutable_artifact(
     if isinstance(diag_dict, str):
         diag_dict = json.loads(diag_dict)
 
-    # Use the row UUID as the artifact id so downstream FKs
-    # (e.g. remediation_plans.diagnosis_id) reference the correct PK.
+    # Preserve the original diagnosis object UUID for traceability,
+    # then set id to the DB row PK for downstream FK references.
+    diag_dict["diagnosis_object_id"] = (
+        str(row["diagnosis_object_id"]) if row["diagnosis_object_id"]
+        else diag_dict.get("id")
+    )
     diag_dict["id"] = str(row["id"])
 
     skeptic_verdict = row["skeptic_verdict"]

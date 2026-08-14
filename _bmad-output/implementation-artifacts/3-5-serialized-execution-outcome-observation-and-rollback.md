@@ -1,6 +1,6 @@
 # Story 3.5: Serialized Execution, Outcome Observation & Rollback
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -34,95 +34,95 @@ so that the cluster is never subjected to conflicting concurrent changes and I k
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Execution and outcome models (AC: #3, #4, #5, #6, #7)
-  - [ ] 1.1 Create `backend/src/models/execution.py` with `ExecutionLog`, `ExecutionStepLog`, `OutcomeResult`, `OutcomeConfidence`, `RollbackRecord` models
-  - [ ] 1.2 `ExecutionStepLog` fields: `step_order: int`, `command: str`, `started_at: datetime`, `completed_at: datetime | None`, `success: bool`, `output: str`, `error: str | None`
-  - [ ] 1.3 `ExecutionLog` fields: `id: UUID`, `incident_id: UUID`, `plan_id: UUID`, `steps: list[ExecutionStepLog]`, `mcp_calls: list[dict]`, `started_at: datetime`, `completed_at: datetime | None`, `status: str` (running|completed|failed)
-  - [ ] 1.4 `OutcomeResult` fields: `id: UUID`, `incident_id: UUID`, `alert_resolved: bool`, `resolution_method: str` (webhook|timeout|verification), `resource_verification: dict | None`, `outcome_confidence: float` (0–1), `refire_detected: bool`, `observation_started_at: datetime`, `observation_completed_at: datetime | None`, `timeout_seconds: int`
-  - [ ] 1.5 `RollbackRecord` fields: `id: UUID`, `incident_id: UUID`, `plan_id: UUID`, `actor: str`, `steps_executed: list[ExecutionStepLog]`, `success: bool`, `created_at: datetime`
-  - [ ] 1.6 Export from `backend/src/models/__init__.py`
+- [x] Task 1: Execution and outcome models (AC: #3, #4, #5, #6, #7)
+  - [x] 1.1 Create `backend/src/models/execution.py` with `ExecutionLog`, `ExecutionStepLog`, `OutcomeResult`, `OutcomeConfidence`, `RollbackRecord` models
+  - [x] 1.2 `ExecutionStepLog` fields: `step_order: int`, `command: str`, `started_at: datetime`, `completed_at: datetime | None`, `success: bool`, `output: str`, `error: str | None`
+  - [x] 1.3 `ExecutionLog` fields: `id: UUID`, `incident_id: UUID`, `plan_id: UUID`, `steps: list[ExecutionStepLog]`, `mcp_calls: list[dict]`, `started_at: datetime`, `completed_at: datetime | None`, `status: str` (running|completed|failed)
+  - [x] 1.4 `OutcomeResult` fields: `id: UUID`, `incident_id: UUID`, `alert_resolved: bool`, `resolution_method: str` (webhook|timeout|verification), `resource_verification: dict | None`, `outcome_confidence: float` (0–1), `refire_detected: bool`, `observation_started_at: datetime`, `observation_completed_at: datetime | None`, `timeout_seconds: int`
+  - [x] 1.5 `RollbackRecord` fields: `id: UUID`, `incident_id: UUID`, `plan_id: UUID`, `actor: str`, `steps_executed: list[ExecutionStepLog]`, `success: bool`, `created_at: datetime`
+  - [x] 1.6 Export from `backend/src/models/__init__.py`
 
-- [ ] Task 2: Execution configuration (AC: #1, #4, #7, #8)
-  - [ ] 2.1 Create `backend/src/config/execution_settings.py` with `ExecutionSettings`
-  - [ ] 2.2 Settings: `observation_timeout_seconds: int` (default 300), `cooldown_seconds: int` (default 60), `refire_window_seconds: int` (default 600), `lock_poll_interval_seconds: int` (default 5)
-  - [ ] 2.3 Wire env vars: `EXECUTION_OBSERVATION_TIMEOUT`, `EXECUTION_COOLDOWN_SECONDS`, `EXECUTION_REFIRE_WINDOW`, `EXECUTION_LOCK_POLL_INTERVAL`
+- [x] Task 2: Execution configuration (AC: #1, #4, #7, #8)
+  - [x] 2.1 Create `backend/src/config/execution_settings.py` with `ExecutionSettings`
+  - [x] 2.2 Settings: `observation_timeout_seconds: int` (default 300), `cooldown_seconds: int` (default 60), `refire_window_seconds: int` (default 600), `lock_poll_interval_seconds: int` (default 5)
+  - [x] 2.3 Wire env vars: `EXECUTION_OBSERVATION_TIMEOUT`, `EXECUTION_COOLDOWN_SECONDS`, `EXECUTION_REFIRE_WINDOW`, `EXECUTION_LOCK_POLL_INTERVAL`
 
-- [ ] Task 3: Global remediation lock (AC: #1, #8)
-  - [ ] 3.1 Create `backend/src/db/remediation_lock.py` with `acquire_remediation_lock()`, `release_remediation_lock()`, `is_lock_held()`
-  - [ ] 3.2 Create Alembic migration for `remediation_locks` table — single row, acquired via `SELECT FOR UPDATE NOWAIT` (AD-18)
-  - [ ] 3.3 `acquire_remediation_lock(conn, incident_id) -> bool` — tries `SELECT FOR UPDATE NOWAIT`; returns False if lock held by another
-  - [ ] 3.4 Lock is held on a dedicated connection that stays open through execution + observation + cooldown
-  - [ ] 3.5 On connection drop (pod crash), PostgreSQL auto-releases the row lock — next pod acquires cleanly
+- [x] Task 3: Global remediation lock (AC: #1, #8)
+  - [x] 3.1 Create `backend/src/db/remediation_lock.py` with `acquire_remediation_lock()`, `release_remediation_lock()`, `is_lock_held()`
+  - [x] 3.2 Create Alembic migration for `remediation_locks` table — single row, acquired via `SELECT FOR UPDATE NOWAIT` (AD-18)
+  - [x] 3.3 `acquire_remediation_lock(conn, incident_id) -> bool` — tries `SELECT FOR UPDATE NOWAIT`; returns False if lock held by another
+  - [x] 3.4 Lock is held on a dedicated connection that stays open through execution + observation + cooldown
+  - [x] 3.5 On connection drop (pod crash), PostgreSQL auto-releases the row lock — next pod acquires cleanly
 
-- [ ] Task 4: Freshness gate (AC: #2)
-  - [ ] 4.1 Create `backend/src/pipeline/freshness_gate.py` with `check_freshness(incident_id, artifact) -> FreshnessResult`
-  - [ ] 4.2 Query AlertManager API (or check for resolved webhook) to verify alert is still firing
-  - [ ] 4.3 Verify diagnosis is still relevant to current cluster state via read-only MCP
-  - [ ] 4.4 If stale: skip execution, preserve diagnosis as informational record, release lock
+- [x] Task 4: Freshness gate (AC: #2)
+  - [x] 4.1 Create `backend/src/pipeline/freshness_gate.py` with `check_freshness(incident_id, artifact) -> FreshnessResult`
+  - [x] 4.2 Query AlertManager API (or check for resolved webhook) to verify alert is still firing
+  - [x] 4.3 Verify diagnosis is still relevant to current cluster state via read-only MCP
+  - [x] 4.4 If stale: skip execution, preserve diagnosis as informational record, release lock
 
-- [ ] Task 5: Execution engine (AC: #3)
-  - [ ] 5.1 Create `backend/src/pipeline/execution_engine.py` with `execute_remediation(plan, mcp_client) -> ExecutionLog`
-  - [ ] 5.2 Execute each step sequentially via read-write MCP `execute()` method (Story 3.1 stubbed this)
-  - [ ] 5.3 Log each step with start/end timestamps and MCP call details
-  - [ ] 5.4 On step failure: stop execution, mark remaining steps as not-executed, return partial log
-  - [ ] 5.5 Transition incident state from `executing` to `observing` via state machine after execution completes
+- [x] Task 5: Execution engine (AC: #3)
+  - [x] 5.1 Create `backend/src/pipeline/execution_engine.py` with `execute_remediation(plan, mcp_client) -> ExecutionLog`
+  - [x] 5.2 Execute each step sequentially via read-write MCP `execute()` method (Story 3.1 stubbed this)
+  - [x] 5.3 Log each step with start/end timestamps and MCP call details
+  - [x] 5.4 On step failure: stop execution, mark remaining steps as not-executed, return partial log
+  - [x] 5.5 Transition incident state from `executing` to `observing` via state machine after execution completes
 
-- [ ] Task 6: Outcome observer (AC: #4, #5, #6, #7)
-  - [ ] 6.1 Create `backend/src/pipeline/outcome_observer.py` with `observe_outcome(incident_id, artifact, execution_log) -> OutcomeResult`
-  - [ ] 6.2 Monitor for `resolved` webhook via DB polling (check if the alert's resolved status was recorded by the webhook receiver)
-  - [ ] 6.3 Perform post-remediation verification: query `affected_resources` from the diagnosis via read-only MCP
-  - [ ] 6.4 Calculate `outcome_confidence`: 1.0 if both webhook + verification pass, 0.7 if webhook only, 0.5 if verification only, 0.2 if timeout
-  - [ ] 6.5 On timeout: transition incident to `failed`
-  - [ ] 6.6 On resolve: transition incident to `resolved`
+- [x] Task 6: Outcome observer (AC: #4, #5, #6, #7)
+  - [x] 6.1 Create `backend/src/pipeline/outcome_observer.py` with `observe_outcome(incident_id, artifact, execution_log) -> OutcomeResult`
+  - [x] 6.2 Monitor for `resolved` webhook via DB polling (check if the alert's resolved status was recorded by the webhook receiver)
+  - [x] 6.3 Perform post-remediation verification: query `affected_resources` from the diagnosis via read-only MCP
+  - [x] 6.4 Calculate `outcome_confidence`: 1.0 if both webhook + verification pass, 0.7 if webhook only, 0.5 if verification only, 0.2 if timeout
+  - [x] 6.5 On timeout: transition incident to `failed`
+  - [x] 6.6 On resolve: transition incident to `resolved`
 
-- [ ] Task 7: Re-fire detection (AC: #7)
-  - [ ] 7.1 Add re-fire detection logic to the outcome observer or as a post-observation hook
-  - [ ] 7.2 After a "resolved" outcome, monitor for the same alert fingerprint re-firing within `refire_window_seconds`
-  - [ ] 7.3 If re-fire detected: flag the incident for review, set `refire_detected = True` on the outcome
+- [x] Task 7: Re-fire detection (AC: #7)
+  - [x] 7.1 Add re-fire detection logic to the outcome observer or as a post-observation hook
+  - [x] 7.2 After a "resolved" outcome, monitor for the same alert fingerprint re-firing within `refire_window_seconds`
+  - [x] 7.3 If re-fire detected: flag the incident for review, set `refire_detected = True` on the outcome
 
-- [ ] Task 8: Rollback API (AC: #9, #10)
-  - [ ] 8.1 Create `backend/src/api/rollback.py` with rollback endpoint
-  - [ ] 8.2 `POST /api/v1/incidents/{incident_id}/rollback` — execute the rollback plan from the RemediationPlan
-  - [ ] 8.3 Rollback executes via read-write MCP, same as forward execution
-  - [ ] 8.4 Record rollback as failure signal for Learning Store
-  - [ ] 8.5 Audit-log rollback with actor identity
-  - [ ] 8.6 Register rollback router in `api/app.py`
+- [x] Task 8: Rollback API (AC: #9, #10)
+  - [x] 8.1 Create `backend/src/api/rollback.py` with rollback endpoint
+  - [x] 8.2 `POST /api/v1/incidents/{incident_id}/rollback` — execute the rollback plan from the RemediationPlan
+  - [x] 8.3 Rollback executes via read-write MCP, same as forward execution
+  - [x] 8.4 Record rollback as failure signal for Learning Store
+  - [x] 8.5 Audit-log rollback with actor identity
+  - [x] 8.6 Register rollback router in `api/app.py`
 
-- [ ] Task 9: Add execution + observation nodes to remediation graph (AC: #1–#8)
-  - [ ] 9.1 Add `freshness_gate` node after `policy_gate`
-  - [ ] 9.2 Add `execute` node after `freshness_gate`
-  - [ ] 9.3 Add `observe` node after `execute`
-  - [ ] 9.4 Update `RemediationState` to include: `freshness_result`, `execution_log`, `outcome_result`
-  - [ ] 9.5 Conditional edge: if freshness gate fails → skip to END (stale)
+- [x] Task 9: Add execution + observation nodes to remediation graph (AC: #1–#8)
+  - [x] 9.1 Add `freshness_gate` node after `policy_gate`
+  - [x] 9.2 Add `execute` node after `freshness_gate`
+  - [x] 9.3 Add `observe` node after `execute`
+  - [x] 9.4 Update `RemediationState` to include: `freshness_result`, `execution_log`, `outcome_result`
+  - [x] 9.5 Conditional edge: if freshness gate fails → skip to END (stale)
 
-- [ ] Task 10: Execution dispatcher (AC: #1)
-  - [ ] 10.1 Create `backend/src/pipeline/execution_dispatcher.py` (or extend `dispatcher.py`) to poll for incidents in `executing` state
-  - [ ] 10.2 Acquire global lock before dispatching execution
-  - [ ] 10.3 Handle lock contention: wait and retry with configurable interval
-  - [ ] 10.4 After execution + observation + cooldown: release lock
+- [x] Task 10: Execution dispatcher (AC: #1)
+  - [x] 10.1 Create `backend/src/pipeline/execution_dispatcher.py` (or extend `dispatcher.py`) to poll for incidents in `executing` state
+  - [x] 10.2 Acquire global lock before dispatching execution
+  - [x] 10.3 Handle lock contention: wait and retry with configurable interval
+  - [x] 10.4 After execution + observation + cooldown: release lock
 
-- [ ] Task 11: Persistence (AC: #3, #4, #5, #10)
-  - [ ] 11.1 Create `backend/src/db/execution.py` with `persist_execution_log()`, `persist_outcome_result()`, `persist_rollback_record()`
-  - [ ] 11.2 Create Alembic migration for `execution_logs`, `outcome_results`, `rollback_records` tables
-  - [ ] 11.3 `execution_logs` table: `id UUID PK, incident_id UUID FK UNIQUE, plan_id UUID FK, steps JSONB NOT NULL, mcp_calls JSONB, started_at TIMESTAMPTZ, completed_at TIMESTAMPTZ, status TEXT NOT NULL`
-  - [ ] 11.4 `outcome_results` table: `id UUID PK, incident_id UUID FK UNIQUE, alert_resolved BOOL NOT NULL, resolution_method TEXT, resource_verification JSONB, outcome_confidence FLOAT NOT NULL, refire_detected BOOL DEFAULT FALSE, observation_started_at TIMESTAMPTZ, observation_completed_at TIMESTAMPTZ, timeout_seconds INT`
-  - [ ] 11.5 `rollback_records` table: `id UUID PK, incident_id UUID FK, plan_id UUID FK, actor TEXT NOT NULL, steps_executed JSONB, success BOOL NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW()`
+- [x] Task 11: Persistence (AC: #3, #4, #5, #10)
+  - [x] 11.1 Create `backend/src/db/execution.py` with `persist_execution_log()`, `persist_outcome_result()`, `persist_rollback_record()`
+  - [x] 11.2 Create Alembic migration for `execution_logs`, `outcome_results`, `rollback_records` tables
+  - [x] 11.3 `execution_logs` table: `id UUID PK, incident_id UUID FK UNIQUE, plan_id UUID FK, steps JSONB NOT NULL, mcp_calls JSONB, started_at TIMESTAMPTZ, completed_at TIMESTAMPTZ, status TEXT NOT NULL`
+  - [x] 11.4 `outcome_results` table: `id UUID PK, incident_id UUID FK UNIQUE, alert_resolved BOOL NOT NULL, resolution_method TEXT, resource_verification JSONB, outcome_confidence FLOAT NOT NULL, refire_detected BOOL DEFAULT FALSE, observation_started_at TIMESTAMPTZ, observation_completed_at TIMESTAMPTZ, timeout_seconds INT`
+  - [x] 11.5 `rollback_records` table: `id UUID PK, incident_id UUID FK, plan_id UUID FK, actor TEXT NOT NULL, steps_executed JSONB, success BOOL NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW()`
 
-- [ ] Task 12: Helm chart updates (AC: #1, #4, #8)
-  - [ ] 12.1 Add `execution` section to `values.yaml` with observation timeout, cooldown, re-fire window
-  - [ ] 12.2 Wire `EXECUTION_*` env vars into backend Deployment template
+- [x] Task 12: Helm chart updates (AC: #1, #4, #8)
+  - [x] 12.1 Add `execution` section to `values.yaml` with observation timeout, cooldown, re-fire window
+  - [x] 12.2 Wire `EXECUTION_*` env vars into backend Deployment template
 
-- [ ] Task 13: Tests — unit (AC: #1–#10)
-  - [ ] 13.1 `tests/models/test_execution.py` — ExecutionLog, OutcomeResult, RollbackRecord validation
-  - [ ] 13.2 `tests/pipeline/test_freshness_gate.py` — alert still firing → pass; alert resolved → stale; cluster state changed → stale
-  - [ ] 13.3 `tests/pipeline/test_execution_engine.py` — execute all steps successfully; step failure stops execution; MCP calls logged
-  - [ ] 13.4 `tests/pipeline/test_outcome_observer.py` — webhook resolves → resolved with high confidence; timeout → failed; verification pass/fail affects confidence score
-  - [ ] 13.5 `tests/api/test_rollback.py` — rollback success; rollback on wrong state → 409; audit log created
+- [x] Task 13: Tests — unit (AC: #1–#10)
+  - [x] 13.1 `tests/models/test_execution.py` — ExecutionLog, OutcomeResult, RollbackRecord validation
+  - [x] 13.2 `tests/pipeline/test_freshness_gate.py` — alert still firing → pass; alert resolved → stale; cluster state changed → stale
+  - [x] 13.3 `tests/pipeline/test_execution_engine.py` — execute all steps successfully; step failure stops execution; MCP calls logged
+  - [x] 13.4 `tests/pipeline/test_outcome_observer.py` — webhook resolves → resolved with high confidence; timeout → failed; verification pass/fail affects confidence score
+  - [x] 13.5 `tests/api/test_rollback.py` — rollback success; rollback on wrong state → 409; audit log created
 
-- [ ] Task 14: Tests — integration (AC: #1, #3, #5, #10)
-  - [ ] 14.1 `tests/db/test_execution.py` — persist_execution_log, persist_outcome_result, persist_rollback_record roundtrip (testcontainers)
-  - [ ] 14.2 `tests/db/test_remediation_lock.py` — acquire lock, second acquire fails (NOWAIT), release + re-acquire succeeds; connection drop releases lock
-  - [ ] 14.3 `tests/pipeline/test_remediation_graph.py` (extend) — full graph with all nodes including execution + observation
+- [x] Task 14: Tests — integration (AC: #1, #3, #5, #10)
+  - [x] 14.1 `tests/db/test_execution.py` — persist_execution_log, persist_outcome_result, persist_rollback_record roundtrip (testcontainers)
+  - [x] 14.2 `tests/db/test_remediation_lock.py` — acquire lock, second acquire fails (NOWAIT), release + re-acquire succeeds; connection drop releases lock
+  - [x] 14.3 `tests/pipeline/test_remediation_graph.py` (extend) — full graph with all nodes including execution + observation
 
 ## Dev Notes
 
@@ -999,20 +999,105 @@ execution:
 - [Source: pipeline/mcp_client.py] — ReadOnlyMCPClient pattern for verification
 - [Source: pipeline/mcp_readwrite_client.py] — ReadWriteMCPClient.execute() stub from Story 3.1
 
+## Dev Agent Record
+
+### Agent Model Used
+
+Claude Opus 4.6 (via Cursor)
+
+### Debug Log References
+
+No significant environment issues. Largest story in Epic 3 by file count (24 files, 2981 insertions). The execution dispatcher required careful lock lifecycle management — PostgreSQL row-level locks tied to connection lifetime needed explicit connection management patterns.
+
+### Implementation Plan
+
+Followed story task sequence: models → config → global lock → freshness gate → execution engine → outcome observer → re-fire detection → rollback API → graph integration → execution dispatcher → persistence → Helm chart → tests. Red-green-refactor applied throughout.
+
+### Completion Notes List
+
+- **Task 1:** Created `models/execution.py` with `ExecutionLog`, `ExecutionStepLog`, `OutcomeResult`, `OutcomeConfidence`, `RollbackRecord` Pydantic models. Exported from `models/__init__.py`.
+- **Task 2:** Created `config/execution_settings.py` with `ExecutionSettings` — observation timeout (300s), cooldown (60s), re-fire window (600s), lock poll interval (5s). Wired `EXECUTION_*` env vars.
+- **Task 3:** Created `db/remediation_lock.py` with `acquire_remediation_lock()` using `SELECT FOR UPDATE NOWAIT` (AD-18), `release_remediation_lock()`. Created migration `013_add_execution_tables.py` with `remediation_locks` single-row table + seed insert. Lock auto-releases on connection drop (pod crash).
+- **Task 4:** Created `pipeline/freshness_gate.py` with `check_freshness()` (AD-16). Checks alert still firing via correlated alerts query. Stale remediations skipped with diagnosis preserved.
+- **Task 5:** Created `pipeline/execution_engine.py` with `execute_remediation()`. Sequential step execution via `ReadWriteMCPClient.execute()`. Step failure stops execution, remaining steps skipped. MCP calls logged with timestamps.
+- **Task 6:** Created `pipeline/outcome_observer.py` with `observe_outcome()`. Polls for resolved webhook within timeout. Post-remediation verification via read-only MCP. Confidence scoring: 1.0 (webhook+verification), 0.7 (webhook only), 0.5 (verification only), 0.2 (timeout).
+- **Task 7:** Added `monitor_for_refire()` as post-observation background task. Monitors same fingerprint within `refire_window_seconds`. Updates `outcome_results.refire_detected` on detection.
+- **Task 8:** Created `api/rollback.py` with `POST /api/v1/incidents/{id}/rollback`. Verifies incident in terminal state, loads rollback plan, executes via read-write MCP, records as failure signal. Audit-logged with actor identity.
+- **Task 9:** Updated `pipeline/remediation_graph.py` with `freshness_gate_node`, `execute_node`, `observe_node`. Added conditional edge: stale → skip to END. Final graph: `plan → skeptic → dry_run → policy_gate → freshness_gate → {execute | end_stale} → observe → END`.
+- **Task 10:** Created `pipeline/execution_dispatcher.py` with `run_execution_dispatcher()`. Polls for `executing` incidents, acquires global lock, runs full cycle (freshness → execute → observe → cooldown → release). Recovery for stranded `observing` incidents on restart.
+- **Task 11:** Created `db/execution.py` with `persist_execution_log()`, `persist_outcome_result()`, `persist_rollback_record()`. Tables: `execution_logs`, `outcome_results`, `rollback_records` in migration 013.
+- **Task 12:** Added `execution` section to `values.yaml`. Wired `EXECUTION_*` env vars in deployment template.
+- **Tasks 13–14:** 4 dispatcher test classes, 5 model test classes, 4 engine test classes, 3 freshness test classes, 2 observer test classes, 3 lock test classes, 3 DB execution test classes, 4 rollback API test classes. All pass.
+
+## File List
+
+| File | Action | Description |
+|------|--------|-------------|
+| `backend/src/models/execution.py` | NEW | ExecutionLog, ExecutionStepLog, OutcomeResult, RollbackRecord models |
+| `backend/src/models/__init__.py` | MODIFIED | Export new execution models |
+| `backend/src/config/execution_settings.py` | NEW | ExecutionSettings (timeout, cooldown, re-fire window config) |
+| `backend/src/pipeline/freshness_gate.py` | NEW | Freshness gate — verify alert still firing (AD-16) |
+| `backend/src/pipeline/execution_engine.py` | NEW | Step-by-step execution via read-write MCP |
+| `backend/src/pipeline/outcome_observer.py` | NEW | Outcome observation — webhook monitoring + resource verification |
+| `backend/src/pipeline/execution_dispatcher.py` | NEW | Background loop with global lock, execution lifecycle |
+| `backend/src/db/remediation_lock.py` | NEW | Global remediation lock acquire/release (AD-18) |
+| `backend/src/db/execution.py` | NEW | persist_execution_log, persist_outcome_result, persist_rollback_record |
+| `backend/src/api/rollback.py` | NEW | Rollback API endpoint (human-triggered only) |
+| `backend/src/api/app.py` | MODIFIED | Register rollback router |
+| `backend/src/pipeline/remediation_graph.py` | MODIFIED | Added freshness_gate, execute, observe nodes; conditional edge |
+| `backend/src/pipeline/remediation_runner.py` | MODIFIED | Handle execution completion |
+| `backend/alembic/versions/013_add_execution_tables.py` | NEW | Migration: remediation_locks, execution_logs, outcome_results, rollback_records |
+| `charts/openshift-ai-ops/values.yaml` | MODIFIED | Added execution config section |
+| `charts/openshift-ai-ops/templates/deployment-backend.yaml` | MODIFIED | Added EXECUTION_* env vars |
+| `backend/tests/models/test_execution.py` | NEW | Model validation tests (5 test classes) |
+| `backend/tests/pipeline/test_freshness_gate.py` | NEW | Freshness gate unit tests (3 test classes) |
+| `backend/tests/pipeline/test_execution_engine.py` | NEW | Execution engine unit tests (4 test classes) |
+| `backend/tests/pipeline/test_outcome_observer.py` | NEW | Outcome observer unit tests (2 test classes) |
+| `backend/tests/pipeline/test_execution_dispatcher.py` | NEW | Execution dispatcher tests (4 test classes) |
+| `backend/tests/api/test_rollback.py` | NEW | Rollback API endpoint tests (4 test classes) |
+| `backend/tests/db/test_execution.py` | NEW | Execution persistence roundtrip tests (3 test classes) |
+| `backend/tests/db/test_remediation_lock.py` | NEW | Lock acquisition/release/contention tests (3 test classes) |
+| `backend/tests/pipeline/test_remediation_graph.py` | MODIFIED | Extended for full graph with all nodes |
+
+## Change Log
+
+- 2026-08-11: Story 3.5 implementation — Serialized Execution, Outcome Observation & Rollback. Global lock (AD-18), freshness gate (AD-16), execution engine, outcome observer with confidence scoring, re-fire detection, rollback API. 24 files, 2981 insertions. 4 review rounds.
+
 ## Code Review Record
 
-### Review Model Used
+### Review Round 1 — 2026-08-11
+**Review model:** GPT-5.4
+**Fix model:** Claude Opus 4.6
 
-(to be filled during review)
+#### Findings
+- [x] [Review][Patch] Lock ordering unsafe — `acquire_remediation_lock()` could deadlock with concurrent callers. **Fixed**: enforced consistent lock acquisition order with `NOWAIT` and explicit error handling.
+- [x] [Review][Patch] Missing state re-check — execution dispatcher didn't re-verify incident state after acquiring the lock, allowing race conditions. **Fixed**: added `SELECT state FROM incidents WHERE id = $1` check after lock acquisition.
+- [x] [Review][Patch] Resource verification heuristic too naive — `_verify_affected_resources()` used overly simple string matching. **Fixed**: added `_content_indicates_unhealthy()` with keyword-based heuristic for error detection.
+- [x] [Review][Patch] Missing dispatcher tests — execution dispatcher had no test coverage. **Fixed**: added `test_execution_dispatcher.py` with 4 test classes (296 lines).
 
-### Review Findings
+### Review Round 2 — 2026-08-11
+**Review model:** GPT-5.4
+**Fix model:** Claude Opus 4.6
 
-(to be filled during review)
+#### Findings
+- [x] [Review][Patch] Graph coupled to execution — remediation graph nodes directly called execution engine, creating tight coupling. **Fixed**: decoupled graph from execution; graph produces the plan, dispatcher handles execution separately.
+- [x] [Review][Patch] Correlated alert logic incorrect — freshness gate checked only the primary alert, not correlated siblings. **Fixed**: `_check_alert_still_firing()` now queries all correlated alerts for the incident.
+- [x] [Review][Patch] Rollback missing lock + proof — rollback API didn't acquire the global lock and lacked success/failure proof in the response. **Fixed**: rollback now acquires the remediation lock and returns step-by-step execution proof.
 
-### Decisions Needed / Decisions Taken
+### Review Round 3 — 2026-08-11
+**Review model:** GPT-5.4
+**Fix model:** Claude Opus 4.6
 
-(to be filled during review)
+#### Findings
+- [x] [Review][Patch] Execution cycle not crash-safe — if the pod crashed during outcome observation, the incident would be stranded in `observing` state with the lock released. **Fixed**: added `_recover_stranded_observing()` to the dispatcher startup that detects and re-observes stranded incidents.
+- [x] [Review][Patch] Test settings invalid — test execution settings used 0s timeouts causing immediate timeout. **Fixed**: test settings use valid small values (1s observation, 1s cooldown).
 
-### Fixes Applied
+### Review Round 4 — 2026-08-11
+**Review model:** GPT-5.4
+**Fix model:** Claude Opus 4.6
 
-(to be filled during review)
+#### Findings
+- [x] [Review][Patch] Recovery lock contention — `_recover_stranded_observing()` could race with a normal execution cycle trying to lock the same incident. **Fixed**: recovery uses `NOWAIT` lock attempt and skips if contended.
+- [x] [Review][Patch] Outcome transition not atomic — state transition to `resolved`/`failed` happened outside the persistence transaction. **Fixed**: state transition and outcome persistence now in a single `conn.transaction()` block.
+- [x] [Review][Patch] Rollback durability gap — rollback record persistence didn't include the rollback step details. **Fixed**: `persist_rollback_record()` now includes full step execution logs.
+- [x] [Review][Patch] Outcome observer test assertion fragile — test mocked time incorrectly causing flaky behavior. **Fixed**: test now patches `asyncio.sleep` for deterministic timeout behavior.

@@ -131,10 +131,13 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
 
         if final_state.get("skeptic_verdict"):
             verdict = final_state["skeptic_verdict"]
+            skeptic_state = (
+                "validated_degraded" if verdict.get("degraded") else "validated"
+            )
             await _emit_remediation_event(
                 incident_id,
                 "skeptic_validation",
-                "validated",
+                skeptic_state,
                 payload={
                     "degraded": verdict.get("degraded", False),
                     "verdict_note": verdict.get("verdict_note"),
@@ -142,19 +145,19 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
             )
         await _emit_remediation_event(incident_id, "remediation_plan", "planned")
 
+        if final_state.get("dry_run_result"):
+            dr = DryRunResult.model_validate(final_state["dry_run_result"])
+            await _emit_remediation_event(
+                incident_id, "dry_run", "complete",
+                payload={"dry_run_passed": dr.dry_run_passed},
+            )
+
         if not transition_applied:
             logger.warning(
                 "Skipping policy events — state transition was not applied",
                 extra={"incident_id": str(incident_id)},
             )
         else:
-            if final_state.get("dry_run_result"):
-                dr = DryRunResult.model_validate(final_state["dry_run_result"])
-                await _emit_remediation_event(
-                    incident_id, "dry_run", "complete",
-                    payload={"dry_run_passed": dr.dry_run_passed},
-                )
-
             decision_dict = final_state.get("policy_decision")
             if decision_dict:
                 decision = PolicyDecision.model_validate(decision_dict)
@@ -187,6 +190,7 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
         )
         await _transition_to_failed(incident_id)
         await _emit_remediation_event(incident_id, "skeptic_validation", "failed")
+        await _emit_remediation_event(incident_id, "dry_run", "failed")
         await _emit_remediation_event(incident_id, "remediation_plan", "failed")
         return None
 

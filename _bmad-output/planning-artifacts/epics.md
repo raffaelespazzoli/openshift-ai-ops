@@ -807,6 +807,46 @@ So that the cluster is never subjected to conflicting concurrent changes and I k
 
 Every resolved incident is stored as a Case Record with vector embeddings in pgvector. Temporal decay reduces confidence of older or version-mismatched records. When a new alert matches a past successful Case Record above a configurable similarity threshold, the proven remediation is replayed directly — bypassing the full LLM diagnosis pipeline while still passing through the Policy Gate. The system gets faster, cheaper, and less LLM-dependent with every incident.
 
+### Story 4.0: Manifest Generation Pipeline Stage
+
+As an SRE,
+I want the system to produce validated YAML manifests from the planner's natural-language remediation steps,
+So that dry-run pre-flight validates the actual resource content against the cluster, and execution applies deterministic artifacts rather than interpreted commands.
+
+**Acceptance Criteria:**
+
+**Given** a validated RemediationPlan with `apply` or `create` action steps
+**When** the manifest generation stage runs
+**Then** for each applicable step it queries the current cluster state for the target resource, produces a patched YAML manifest reflecting the planned change, and stores the manifest as a file artifact
+
+**Given** a RemediationStep with action `apply` or `create`
+**When** the manifest generator queries current state
+**Then** it reads the existing resource via the read-write MCP Server and applies the planned change to produce a complete YAML manifest
+
+**Given** a RemediationStep with an imperative action (restart, scale, patch, etc.)
+**When** the manifest generator evaluates it
+**Then** the step is skipped with an honest report (imperative actions have no manifest equivalent)
+
+**Given** the manifest generation stage completes
+**When** it stores artifacts
+**Then** each manifest is written to a deterministic temp folder path scoped to the incident, and the `RemediationStep` is updated with a reference to the manifest artifact(s)
+
+**Given** the downstream dry-run stage receives a step with a manifest artifact
+**When** it calls `apply_resource` with `--dry-run=server`
+**Then** it sends the actual YAML manifest body, enabling content-level validation (field values, resource limits, labels) in addition to RBAC and admission checks
+
+**Given** the downstream execution stage receives a step with a manifest artifact
+**When** it executes the remediation
+**Then** it applies the manifest from the temp folder rather than interpreting a free-form shell command, ensuring deterministic execution
+
+**Given** manifest generation fails for a step (e.g., target resource not found, MCP timeout)
+**When** the failure is recorded
+**Then** the step is marked with `manifest_generation_failed=True` and the dry-run stage treats it as a failed pre-flight check
+
+**Given** a RemediationStep model
+**When** it is extended for manifest support
+**Then** it includes a `manifest_path: str | None` field for the artifact reference and a `manifest_generation_failed: bool` field for error tracking
+
 ### Story 4.1: Case Record Persistence & Vector Embeddings
 
 As an SRE,

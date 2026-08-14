@@ -1,6 +1,6 @@
 # Story 3.4: Human Approval Workflow (Backend API)
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -24,59 +24,59 @@ so that I maintain control over cluster changes while benefiting from AI-prepare
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Approval/Rejection request/response models (AC: #1, #2, #3)
-  - [ ] 1.1 Create `backend/src/models/approval.py` with `ApprovalRequest`, `RejectionRequest`, `ApprovalRecord`, `ApprovalContext` models
-  - [ ] 1.2 `ApprovalRecord` fields: `id: UUID`, `incident_id: UUID`, `plan_id: UUID`, `action: str` (approved|rejected), `actor: str`, `reason: str | None`, `created_at: datetime`
-  - [ ] 1.3 `ApprovalContext` fields: `incident_id: UUID`, `state: str`, `diagnosis_summary: dict`, `remediation_plan: dict`, `skeptic_verdict: dict | None`, `dry_run_result: dict | None`, `blast_radius: str`, `policy_decision: dict | None`, `queued_at: datetime`, `minimum_review_seconds: int | None`, `review_time_remaining: float | None`
-  - [ ] 1.4 `RejectionRequest` fields: `reason: str` (required — must explain why)
-  - [ ] 1.5 Export from `backend/src/models/__init__.py`
+- [x] Task 1: Approval/Rejection request/response models (AC: #1, #2, #3)
+  - [x] 1.1 Create `backend/src/models/approval.py` with `ApprovalRequest`, `RejectionRequest`, `ApprovalRecord`, `ApprovalContext` models
+  - [x] 1.2 `ApprovalRecord` fields: `id: UUID`, `incident_id: UUID`, `plan_id: UUID`, `action: str` (approved|rejected), `actor: str`, `reason: str | None`, `created_at: datetime`
+  - [x] 1.3 `ApprovalContext` fields: `incident_id: UUID`, `state: str`, `diagnosis_summary: dict`, `remediation_plan: dict`, `skeptic_verdict: dict | None`, `dry_run_result: dict | None`, `blast_radius: str`, `policy_decision: dict | None`, `queued_at: datetime`, `minimum_review_seconds: int | None`, `review_time_remaining: float | None`
+  - [x] 1.4 `RejectionRequest` fields: `reason: str` (required — must explain why)
+  - [x] 1.5 Export from `backend/src/models/__init__.py`
 
-- [ ] Task 2: Approval configuration (AC: #4)
-  - [ ] 2.1 Create `backend/src/config/approval_settings.py` with `ApprovalSettings`
-  - [ ] 2.2 Settings: `minimum_review_seconds_node: int` (default 60), `minimum_review_seconds_cluster: int` (default 60), `minimum_review_enabled: bool` (default True)
-  - [ ] 2.3 Wire env vars: `APPROVAL_MIN_REVIEW_NODE`, `APPROVAL_MIN_REVIEW_CLUSTER`, `APPROVAL_MIN_REVIEW_ENABLED`
+- [x] Task 2: Approval configuration (AC: #4)
+  - [x] 2.1 Create `backend/src/config/approval_settings.py` with `ApprovalSettings`
+  - [x] 2.2 Settings: `minimum_review_seconds_node: int` (default 60), `minimum_review_seconds_cluster: int` (default 60), `minimum_review_enabled: bool` (default True)
+  - [x] 2.3 Wire env vars: `APPROVAL_MIN_REVIEW_NODE`, `APPROVAL_MIN_REVIEW_CLUSTER`, `APPROVAL_MIN_REVIEW_ENABLED`
 
-- [ ] Task 3: Approval database operations (AC: #1, #2, #3)
-  - [ ] 3.1 Create `backend/src/db/approval.py` with `persist_approval_record()`, `load_approval_context()`, `list_awaiting_approval()`
-  - [ ] 3.2 `load_approval_context()` joins `incidents`, `remediation_plans`, `immutable_diagnoses`, `remediation_skeptic_reviews`, `dry_run_results`, `policy_decisions` for full approval context
-  - [ ] 3.3 Create Alembic migration `011_add_approval_records.py` for `approval_records` table
-  - [ ] 3.4 Table schema: `id UUID PK, incident_id UUID FK UNIQUE, plan_id UUID FK, action TEXT NOT NULL, actor TEXT NOT NULL, reason TEXT, created_at TIMESTAMPTZ DEFAULT NOW()`
+- [x] Task 3: Approval database operations (AC: #1, #2, #3)
+  - [x] 3.1 Create `backend/src/db/approval.py` with `persist_approval_record()`, `load_approval_context()`, `list_awaiting_approval()`
+  - [x] 3.2 `load_approval_context()` joins `incidents`, `remediation_plans`, `immutable_diagnoses`, `remediation_skeptic_reviews`, `dry_run_results`, `policy_decisions` for full approval context
+  - [x] 3.3 Create Alembic migration `012_add_approval_records.py` for `approval_records` table
+  - [x] 3.4 Table schema: `id UUID PK, incident_id UUID FK UNIQUE, plan_id UUID FK, action TEXT NOT NULL, actor TEXT NOT NULL, reason TEXT, created_at TIMESTAMPTZ DEFAULT NOW()`
 
-- [ ] Task 4: Approval API endpoints (AC: #1, #2, #3, #4)
-  - [ ] 4.1 Create `backend/src/api/approval.py` with `router = APIRouter()`
-  - [ ] 4.2 `GET /api/v1/incidents/{incident_id}/approval` — returns `ApprovalContext` with full decision context
-  - [ ] 4.3 `POST /api/v1/incidents/{incident_id}/approve` — approve the remediation plan
-  - [ ] 4.4 `POST /api/v1/incidents/{incident_id}/reject` — reject the remediation plan (requires `reason` in body)
-  - [ ] 4.5 `GET /api/v1/incidents/awaiting-approval` — list all incidents awaiting approval (for navigation badge count)
-  - [ ] 4.6 Minimum review time enforcement: reject approve action with 409 Conflict if review time not elapsed
+- [x] Task 4: Approval API endpoints (AC: #1, #2, #3, #4)
+  - [x] 4.1 Create `backend/src/api/approval.py` with `router = APIRouter()`
+  - [x] 4.2 `GET /api/v1/incidents/{incident_id}/approval` — returns `ApprovalContext` with full decision context
+  - [x] 4.3 `POST /api/v1/incidents/{incident_id}/approve` — approve the remediation plan
+  - [x] 4.4 `POST /api/v1/incidents/{incident_id}/reject` — reject the remediation plan (requires `reason` in body)
+  - [x] 4.5 `GET /api/v1/incidents/awaiting-approval` — list all incidents awaiting approval (for navigation badge count)
+  - [x] 4.6 Minimum review time enforcement: reject approve action with 409 Conflict if review time not elapsed
 
-- [ ] Task 5: State transitions and SSE events (AC: #2, #3)
-  - [ ] 5.1 On approve: `transition(IncidentState.AWAITING_APPROVAL, IncidentState.EXECUTING)` via state machine
-  - [ ] 5.2 On reject: `transition(IncidentState.AWAITING_APPROVAL, IncidentState.FAILED)` via state machine
-  - [ ] 5.3 Emit SSE event `incident.state_changed` on approve/reject
-  - [ ] 5.4 Emit SSE event `incident.approval_decision` with action + actor details
+- [x] Task 5: State transitions and SSE events (AC: #2, #3)
+  - [x] 5.1 On approve: `transition(IncidentState.AWAITING_APPROVAL, IncidentState.EXECUTING)` via state machine
+  - [x] 5.2 On reject: `transition(IncidentState.AWAITING_APPROVAL, IncidentState.FAILED)` via state machine
+  - [x] 5.3 Emit SSE event `incident.state_changed` on approve/reject
+  - [x] 5.4 Emit SSE event `incident.approval_decision` with action + actor details
 
-- [ ] Task 6: Policy adjustment endpoint (AC: #5)
-  - [ ] 6.1 Add `POST /api/v1/policy/adjust` endpoint to `backend/src/api/approval.py`
-  - [ ] 6.2 Accept severity, blast_radius, confidence combination and new threshold values
-  - [ ] 6.3 Persist adjustment to DB (preparation for Story 6.4's full runtime API)
-  - [ ] 6.4 Audit-log the policy change with actor identity
+- [x] Task 6: Policy adjustment endpoint (AC: #5)
+  - [x] 6.1 Add `POST /api/v1/policy/adjust` endpoint to `backend/src/api/approval.py`
+  - [x] 6.2 Accept severity, blast_radius, confidence combination and new threshold values
+  - [x] 6.3 Persist adjustment to DB (preparation for Story 6.4's full runtime API)
+  - [x] 6.4 Audit-log the policy change with actor identity
 
-- [ ] Task 7: Helm chart updates (AC: #4)
-  - [ ] 7.1 Add `approval` section to `values.yaml` with minimum review time configuration
-  - [ ] 7.2 Wire `APPROVAL_*` env vars into backend Deployment template
+- [x] Task 7: Helm chart updates (AC: #4)
+  - [x] 7.1 Add `approval` section to `values.yaml` with minimum review time configuration
+  - [x] 7.2 Wire `APPROVAL_*` env vars into backend Deployment template
 
-- [ ] Task 8: Register approval router (AC: #1-#5)
-  - [ ] 8.1 Import and register `approval.router` in `api/app.py`
+- [x] Task 8: Register approval router (AC: #1-#5)
+  - [x] 8.1 Import and register `approval.router` in `api/app.py`
 
-- [ ] Task 9: Tests — unit (AC: #1–#5)
-  - [ ] 9.1 `tests/models/test_approval.py` — ApprovalRecord, ApprovalContext, RejectionRequest model validation
-  - [ ] 9.2 `tests/api/test_approval.py` — endpoint tests with TestClient: approve (success, already-approved, wrong state), reject (success, missing reason), approval context retrieval, awaiting list, minimum review time enforcement (409 when too early)
-  - [ ] 9.3 `tests/api/test_approval.py` — policy adjustment endpoint with audit log verification
+- [x] Task 9: Tests — unit (AC: #1–#5)
+  - [x] 9.1 `tests/models/test_approval.py` — ApprovalRecord, ApprovalContext, RejectionRequest model validation
+  - [x] 9.2 `tests/api/test_approval.py` — endpoint tests with TestClient: approve (success, already-approved, wrong state), reject (success, missing reason), approval context retrieval, awaiting list, minimum review time enforcement (409 when too early)
+  - [x] 9.3 `tests/api/test_approval.py` — policy adjustment endpoint with audit log verification
 
-- [ ] Task 10: Tests — integration (AC: #2, #3)
-  - [ ] 10.1 `tests/db/test_approval.py` — persist_approval_record roundtrip (testcontainers), load_approval_context joins, list_awaiting_approval
-  - [ ] 10.2 `tests/api/test_approval.py` (extend) — full flow: create incident in awaiting_approval → approve → verify state is executing; create incident → reject → verify state is failed
+- [x] Task 10: Tests — integration (AC: #2, #3)
+  - [x] 10.1 `tests/db/test_approval.py` — persist_approval_record roundtrip (testcontainers), load_approval_context joins, list_awaiting_approval
+  - [x] 10.2 `tests/api/test_approval.py` (extend) — full flow: create incident in awaiting_approval → approve → verify state is executing; create incident → reject → verify state is failed
 
 ## Dev Notes
 
@@ -564,20 +564,85 @@ approval:
 - [Source: models/state_machine.py] — `transition()`, `VALID_TRANSITIONS[AWAITING_APPROVAL] = [EXECUTING, FAILED]`
 - [Source: db/audit.py] — `write_audit_log()` function signature and usage
 
+## Dev Agent Record
+
+### Agent Model Used
+
+Claude Opus 4.6 (via Cursor)
+
+### Debug Log References
+
+No significant environment issues encountered. All patterns followed established API conventions from `api/incidents.py` and auth patterns from `api/auth.py`.
+
+### Implementation Plan
+
+Followed story task sequence: models → config → DB persistence → API endpoints → state transitions → Helm chart → tests. Used FastAPI TestClient for endpoint testing with `AUTH_DISABLED=true` dev mode.
+
+### Completion Notes List
+
+- **Task 1:** Created `models/approval.py` with `ApprovalRecord`, `RejectionRequest`, `ApprovalContext`, `PolicyAdjustmentRequest` Pydantic models. `RejectionRequest` requires non-empty `reason`. Exported from `models/__init__.py`. Added `ERROR_CONFLICT` to `models/api.py`.
+- **Task 2:** Created `config/approval_settings.py` with `ApprovalSettings` — minimum review time for node (60s) and cluster (60s) blast radius. Wired `APPROVAL_*` env vars.
+- **Task 3:** Created `db/approval.py` with `persist_approval_record()`, `load_approval_context()` (multi-table join), `list_awaiting_approval()`, `persist_policy_adjustment()`. Created migration `012_add_approval_records.py`.
+- **Task 4:** Created `api/approval.py` with 5 endpoints: `GET /incidents/awaiting-approval`, `GET /incidents/{id}/approval` (context), `POST /incidents/{id}/approve`, `POST /incidents/{id}/reject`, `POST /policy/adjust`. Minimum review time enforcement returns 409 Conflict when too early.
+- **Task 5:** State transitions via canonical `transition()`: `awaiting_approval → executing` (approve), `awaiting_approval → failed` (reject). SSE events emitted for both.
+- **Task 6:** Policy adjustment persists to DB with audit logging. Foundation for Story 6.4's full runtime API.
+- **Task 7:** Added `approval` section to `values.yaml` and wired `APPROVAL_*` env vars in deployment template.
+- **Task 8:** Registered `approval.router` in `api/app.py`.
+- **Tasks 9–10:** 8 API test classes, 5 model test classes, 4 DB test classes covering approve/reject flows, minimum review time, policy adjustment, SSE emission, missing plan guards.
+
+## File List
+
+| File | Action | Description |
+|------|--------|-------------|
+| `backend/src/models/approval.py` | NEW | ApprovalRecord, RejectionRequest, ApprovalContext, PolicyAdjustmentRequest models |
+| `backend/src/models/__init__.py` | MODIFIED | Export new approval models |
+| `backend/src/models/api.py` | MODIFIED | Added ERROR_CONFLICT constant |
+| `backend/src/models/events.py` | MODIFIED | Added INCIDENT_APPROVAL_DECISION event name |
+| `backend/src/config/approval_settings.py` | NEW | ApprovalSettings (minimum review time config) |
+| `backend/src/api/approval.py` | NEW | Approval REST endpoints (approve, reject, context, list, policy adjust) |
+| `backend/src/api/app.py` | MODIFIED | Register approval router |
+| `backend/src/db/approval.py` | NEW | persist_approval_record, load_approval_context, list_awaiting_approval, persist_policy_adjustment |
+| `backend/alembic/versions/012_add_approval_records.py` | NEW | Migration: approval_records table |
+| `charts/openshift-ai-ops/values.yaml` | MODIFIED | Added approval config section |
+| `charts/openshift-ai-ops/templates/deployment-backend.yaml` | MODIFIED | Added APPROVAL_* env vars |
+| `backend/tests/models/test_approval.py` | NEW | Model validation tests (5 test classes) |
+| `backend/tests/api/test_approval.py` | NEW | API endpoint tests (8 test classes) |
+| `backend/tests/db/test_approval.py` | NEW | DB persistence roundtrip tests (4 test classes) |
+
+## Change Log
+
+- 2026-08-11: Story 3.4 implementation — Human Approval Workflow Backend API. Approval/rejection REST endpoints, minimum review time enforcement, policy adjustment foundation. 14 files, 1641 insertions. 4 review rounds.
+
 ## Code Review Record
 
-### Review Model Used
+### Review Round 1 — 2026-08-11
+**Review model:** GPT-5.4
+**Fix model:** Claude Opus 4.6
 
-(to be filled during review)
+#### Findings
+- [x] [Review][Patch] Policy adjustment contract incomplete — `PolicyAdjustmentRequest` lacked field validation. **Fixed**: added strict validation to the request model.
+- [x] [Review][Patch] Missing defensive plan guard — approve/reject endpoints didn't verify a remediation plan exists before proceeding. **Fixed**: added plan_id null check returning 409.
 
-### Review Findings
+### Review Round 2 — 2026-08-11
+**Review model:** GPT-5.4
+**Fix model:** Claude Opus 4.6
 
-(to be filled during review)
+#### Findings
+- [x] [Review][Patch] Duplicate audit logging — `AuditMiddleware` auto-logs POST requests AND explicit `write_audit_log()` calls created duplicate entries. **Fixed**: removed explicit audit log calls for approve/reject (middleware handles it).
+- [x] [Review][Patch] Missing context guard — `get_approval_context_endpoint` returned incomplete context when remediation plan was missing. **Fixed**: added plan presence check returning 500 for corrupted state.
+- [x] [Review][Patch] Strict validation gaps — `ApprovalRecord.action` and `RejectionRequest.reason` needed tighter constraints. **Fixed**: added Literal type and min_length validation.
 
-### Decisions Needed / Decisions Taken
+### Review Round 3 — 2026-08-11
+**Review model:** GPT-5.4
+**Fix model:** Claude Opus 4.6
 
-(to be filled during review)
+#### Findings
+- [x] [Review][Patch] SSE emission failure could crash the endpoint — if event bus emit failed after a committed transaction, the HTTP response was lost. **Fixed**: wrapped SSE emission in try/except with best-effort logging (state transition is committed regardless).
+- [x] [Review][Patch] Audit test assertions too brittle — tests asserted exact audit log content that changed between rounds. **Fixed**: assertions now verify key fields without exact content matching.
 
-### Fixes Applied
+### Review Round 4 — 2026-08-11
+**Review model:** GPT-5.4
+**Fix model:** Claude Opus 4.6
 
-(to be filled during review)
+#### Findings
+- [x] [Review][Patch] Policy adjustment not atomic with audit record — `adjust_policy()` persisted the adjustment and audit log in separate transactions. **Fixed**: wrapped both in a single `conn.transaction()` block. Also fixed `write_audit_log()` in `db/audit.py` to accept an existing connection.

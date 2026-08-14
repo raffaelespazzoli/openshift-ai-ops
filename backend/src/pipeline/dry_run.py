@@ -86,6 +86,19 @@ def _is_dry_runnable(step: RemediationStep) -> bool:
     return step.action.lower() in DRY_RUNNABLE_ACTIONS
 
 
+_ERROR_MARKERS: frozenset[str] = frozenset({
+    "error", "denied", "forbidden", "failed",
+    "refused", "rejected", "unable to",
+    "admission webhook", "exceeded quota",
+})
+
+
+def _response_indicates_error(response: str) -> bool:
+    """Detect error payloads returned as normal MCP text instead of exceptions."""
+    lower = response.lower()
+    return any(marker in lower for marker in _ERROR_MARKERS)
+
+
 async def _validate_step(
     client: ReadWriteMCPClient,
     step: RemediationStep,
@@ -100,6 +113,20 @@ async def _validate_step(
                 "dry_run": "server",
             },
         )
+
+        if _response_indicates_error(result):
+            logger.warning(
+                "Dry-run step returned error payload without exception",
+                extra={"step_order": step.order, "response_preview": result[:200]},
+            )
+            return DryRunStepResult(
+                step_order=step.order,
+                command=step.command or "",
+                success=False,
+                message="Server-side dry-run returned error response",
+                error_detail=result[:500],
+            )
+
         return DryRunStepResult(
             step_order=step.order,
             command=step.command or "",

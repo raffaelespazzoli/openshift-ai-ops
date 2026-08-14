@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-08-08
-last_updated: 2026-08-11T12:39:00Z
+last_updated: 2026-08-14T08:56:00Z
 project: openshift-ai-ops
 project_key: NOKEY
 tracking_system: file-system
@@ -72,10 +72,11 @@ development_status:
   3-3-dry-run-pre-flight-and-policy-gate: done
   3-4-human-approval-workflow-backend-api: done
   3-5-serialized-execution-outcome-observation-and-rollback: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   # Epic 4: Learning Store & Fast-Path
   epic-4: backlog
+  4-0-manifest-generation-pipeline-stage: backlog
   4-1-case-record-persistence-and-vector-embeddings: backlog
   4-2-temporal-decay-and-version-relevance: backlog
   4-3-fast-path-bypass-for-known-patterns: backlog
@@ -153,12 +154,17 @@ action_items:
 
   # Epic 3 action items
   - epic: 3
-    action: "Add story to turn planner manifest descriptions into dry-runnable payloads — RemediationStep currently carries free-form command/target; true server-side dry-run of apply/create steps requires actual YAML objects. Consider adding a manifest-generation step between planning and pre-flight."
+    action: "Add manifest-generation pipeline stage story — a new phase between planning and dry-run that queries current cluster state, generates YAML manifests into a temp folder, and updates execution commands to apply everything in that folder. Separates LLM planning (natural language) from manifest production (structured YAML). RemediationStep needs a manifest/artifacts field. Decided during Epic 3 retro."
+    owner: "Dev agent"
+    status: done
+
+  - epic: 3
+    action: "Re-fire detection is within-incident only — cross-incident re-fire (same fingerprint, new incident) requires fingerprint-based correlation across incidents. Enhancement for post-MVP."
     owner: "Dev agent"
     status: open
 
   - epic: 3
-    action: "Re-fire detection is within-incident only — cross-incident re-fire (same fingerprint, new incident) requires fingerprint-based correlation across incidents. Enhancement for post-MVP."
+    action: "Story file close-out discipline — ensure story markdown files are updated to done status with completed Dev Agent Record and Code Review Record after final review round. Prevent status drift between sprint-status.yaml and story files."
     owner: "Dev agent"
     status: open
 

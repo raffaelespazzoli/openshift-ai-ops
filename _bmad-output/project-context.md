@@ -251,6 +251,14 @@ Five test layers, each with its own infrastructure and trigger:
 - **NEVER invent navigation patterns.** Use the Console shell layout (masthead + sidebar). The standalone app must migrate cleanly to a Console plugin.
 - **NEVER use `danger` red for anything but genuine critical/failed states.** Semantic only.
 
+#### Unhappy Path & Failure Mode Discipline
+
+- **Every state-changing operation must handle failure atomically.** If two related writes (e.g., state transition + artifact persistence, audit log + policy adjustment) must both succeed or both fail, they MUST share a single database transaction. Never split related writes across separate transactions or connections.
+- **SSE event emission is best-effort and must never crash the caller.** Wrap all `bus.emit()` calls in try/except. SSE failures are logged, not propagated. The committed database state is the source of truth; SSE is eventual notification.
+- **External call results must be validated for error content, not just exceptions.** MCP calls, API responses, and tool invocations can return error payloads as normal text rather than throwing exceptions. Always inspect response content for error indicators (e.g., `"error"`, `"denied"`, `"forbidden"`, `"failed"`) before treating a response as successful.
+- **Degraded outcomes must be distinguishable from clean successes.** When a pipeline stage degrades gracefully (e.g., LLM rebuttal fails, MCP timeout), the resulting verdict/outcome must carry a `degraded` flag or equivalent marker. Downstream consumers (policy gate, approval UI, case records) must be able to distinguish between "validated cleanly" and "passed with caveats."
+- **Every SSE stage-start event must have a matching terminal event on all code paths.** If a stage emits `stage=validating` at entry, every exit path (success, failure, exception) must emit a terminal event (`validated`, `failed`, `aborted`). Subscribers must never be left observing a perpetually in-progress stage.
+
 #### Operational Gotchas
 
 - **MCP timeout ≠ failure.** A timeout produces partial evidence with explicit `evidence_gaps`. Diagnosis continues with available data. It does NOT fail the pipeline.
