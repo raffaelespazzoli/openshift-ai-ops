@@ -60,6 +60,7 @@ async def list_incidents_endpoint(
             "severity": inc["severity"],
             "created_at": inc["created_at"].isoformat(),
             "updated_at": inc["updated_at"].isoformat(),
+            "fast_path": bool(inc.get("fast_path")),
         })
 
     meta = ApiMeta(
@@ -115,6 +116,13 @@ async def get_incident_detail_endpoint(
         "updated_at": detail["updated_at"].isoformat(),
         "alerts": alerts_serialized,
         "correlation_evidence": detail.get("correlation_evidence", {}),
+        "fast_path": bool(detail.get("fast_path")),
+        "fast_path_similarity": detail.get("fast_path_similarity"),
+        "fast_path_case_record_id": (
+            str(detail["fast_path_case_record_id"])
+            if detail.get("fast_path_case_record_id")
+            else None
+        ),
     }
 
     meta = ApiMeta(request_id=request_id_var.get() or "")

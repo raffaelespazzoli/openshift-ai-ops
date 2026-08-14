@@ -31,6 +31,7 @@ class KnowledgeSettings:
     version_relevance_same_major: float = 1.0
     version_relevance_different_major: float = 0.5
     version_relevance_minor_penalty_per_version: float = 0.02
+    learning_store_fast_path_threshold: float = 0.90
 
     @classmethod
     def from_env(cls) -> KnowledgeSettings:
@@ -71,6 +72,9 @@ class KnowledgeSettings:
             version_relevance_minor_penalty_per_version=float(
                 os.environ.get("LEARNING_STORE_VERSION_RELEVANCE_MINOR_PENALTY", "0.02")
             ),
+            learning_store_fast_path_threshold=float(
+                os.environ.get("LEARNING_STORE_FAST_PATH_THRESHOLD", "0.90")
+            ),
         )
 
 
@@ -108,6 +112,7 @@ def apply_overrides(overrides: dict[str, str]) -> None:
             "version_relevance_minor_penalty_per_version",
             float,
         ),
+        "fast_path_threshold": ("learning_store_fast_path_threshold", float),
     }
     kwargs: dict[str, object] = {}
     for field_name in KnowledgeSettings.__dataclass_fields__:

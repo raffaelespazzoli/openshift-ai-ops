@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from src.db.case_records import search_similar_cases
+from src.db.case_records import search_fast_path_candidates, search_similar_cases
 
 
 @pytest.mark.db
@@ -99,5 +99,119 @@ class TestCaseRecordsTable:
         results = await search_similar_cases(
             db_conn, query_embedding, top_k=5, similarity_threshold=0.99
         )
+
+        assert len(results) == 0
+
+
+@pytest.mark.db
+class TestSearchFastPathCandidates:
+    """Integration tests for search_fast_path_candidates (Story 4.3)."""
+
+    async def test_returns_eligible_record_with_full_data(self, db_conn):
+        """Eligible record with diagnosis_object and remediation_plan is returned."""
+        from pgvector.asyncpg import register_vector
+        await register_vector(db_conn)
+
+        import json
+
+        record_id = uuid.uuid4()
+        embedding = [0.9] + [0.1] * 1535
+        diag = json.dumps({"root_cause_component": "node"})
+        plan = json.dumps({"steps": [{"order": 1}]})
+
+        await db_conn.execute(
+            """
+            INSERT INTO case_records (id, alert_signature, alert_signature_embedding,
+                root_cause_code, outcome, outcome_confidence, ocp_version,
+                fast_path_eligible, diagnosis_object, remediation_plan)
+            VALUES ($1, $2, $3::vector, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb)
+            """,
+            record_id, "HighMemory", str(embedding),
+            "node/memory-pressure", "success", 0.9, "4.16",
+            True, diag, plan,
+        )
+
+        query = [0.85] + [0.1] * 1535
+        results = await search_fast_path_candidates(db_conn, query, threshold=0.0, top_k=3)
+
+        assert len(results) >= 1
+        assert results[0]["id"] == record_id
+        assert results[0]["diagnosis_object"] is not None
+        assert results[0]["remediation_plan"] is not None
+
+    async def test_excludes_ineligible_records(self, db_conn):
+        """Records with fast_path_eligible=False are excluded."""
+        from pgvector.asyncpg import register_vector
+        await register_vector(db_conn)
+
+        import json
+
+        embedding = [0.9] + [0.1] * 1535
+        await db_conn.execute(
+            """
+            INSERT INTO case_records (id, alert_signature, alert_signature_embedding,
+                root_cause_code, outcome, outcome_confidence, ocp_version,
+                fast_path_eligible, diagnosis_object, remediation_plan)
+            VALUES ($1, $2, $3::vector, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb)
+            """,
+            uuid.uuid4(), "Ineligible", str(embedding),
+            "node/memory-pressure", "success", 0.9, "4.16",
+            False, json.dumps({}), json.dumps({}),
+        )
+
+        query = [0.85] + [0.1] * 1535
+        results = await search_fast_path_candidates(db_conn, query, threshold=0.0, top_k=3)
+
+        for r in results:
+            assert r["alert_signature"] != "Ineligible"
+
+    async def test_excludes_failed_outcome(self, db_conn):
+        """Records with outcome='failure' are excluded."""
+        from pgvector.asyncpg import register_vector
+        await register_vector(db_conn)
+
+        import json
+
+        embedding = [0.9] + [0.1] * 1535
+        await db_conn.execute(
+            """
+            INSERT INTO case_records (id, alert_signature, alert_signature_embedding,
+                root_cause_code, outcome, outcome_confidence, ocp_version,
+                fast_path_eligible, diagnosis_object, remediation_plan)
+            VALUES ($1, $2, $3::vector, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb)
+            """,
+            uuid.uuid4(), "FailedOutcome", str(embedding),
+            "node/memory-pressure", "failure", 0.5, "4.16",
+            True, json.dumps({}), json.dumps({}),
+        )
+
+        query = [0.85] + [0.1] * 1535
+        results = await search_fast_path_candidates(db_conn, query, threshold=0.0, top_k=3)
+
+        for r in results:
+            assert r["alert_signature"] != "FailedOutcome"
+
+    async def test_respects_similarity_threshold(self, db_conn):
+        """Records below threshold are excluded."""
+        from pgvector.asyncpg import register_vector
+        await register_vector(db_conn)
+
+        import json
+
+        embedding_far = [0.0] * 768 + [1.0] * 768
+        await db_conn.execute(
+            """
+            INSERT INTO case_records (id, alert_signature, alert_signature_embedding,
+                root_cause_code, outcome, outcome_confidence, ocp_version,
+                fast_path_eligible, diagnosis_object, remediation_plan)
+            VALUES ($1, $2, $3::vector, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb)
+            """,
+            uuid.uuid4(), "FarAway", str(embedding_far),
+            "node/memory-pressure", "success", 0.9, "4.16",
+            True, json.dumps({}), json.dumps({}),
+        )
+
+        query = [1.0] * 768 + [0.0] * 768
+        results = await search_fast_path_candidates(db_conn, query, threshold=0.99, top_k=3)
 
         assert len(results) == 0

@@ -125,3 +125,25 @@ class TestGetIncidentDetail:
     async def test_invalid_uuid_returns_422(self, async_client):
         resp = await async_client.get("/api/v1/incidents/not-a-uuid")
         assert resp.status_code == 422
+
+    async def test_detail_includes_fast_path_fields(self, async_client, seeded_incident):
+        """Incident detail includes fast_path, fast_path_similarity, fast_path_case_record_id."""
+        resp = await async_client.get(f"/api/v1/incidents/{seeded_incident}")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert "fast_path" in data
+        assert data["fast_path"] is False
+        assert data["fast_path_similarity"] is None
+        assert data["fast_path_case_record_id"] is None
+
+
+class TestListIncidentsFastPath:
+    async def test_list_includes_fast_path_flag(self, async_client, seeded_incident):
+        """Incident list items include fast_path flag."""
+        resp = await async_client.get("/api/v1/incidents?status=received")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert len(data) >= 1
+        for item in data:
+            assert "fast_path" in item
+            assert item["fast_path"] is False
