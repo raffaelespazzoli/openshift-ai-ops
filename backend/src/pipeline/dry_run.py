@@ -13,6 +13,8 @@ of what could and could not be validated.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from ..config.logging import Component, get_logger
 from ..models.diagnosis import ImmutableDiagnosisArtifact
 from ..models.policy_gate import DryRunResult, DryRunStepResult
@@ -40,6 +42,15 @@ async def run_dry_run_preflight(
     step_results: list[DryRunStepResult] = []
 
     for step in plan.steps:
+        if step.manifest_generation_failed:
+            step_results.append(DryRunStepResult(
+                step_order=step.order,
+                command=step.command or "",
+                success=False,
+                message="Manifest generation failed — cannot validate this step",
+            ))
+            continue
+
         if step.command is None:
             step_results.append(DryRunStepResult(
                 step_order=step.order,
@@ -103,16 +114,37 @@ async def _validate_step(
     client: ReadWriteMCPClient,
     step: RemediationStep,
 ) -> DryRunStepResult:
-    """Validate a single step via MCP apply_resource with dry-run=server."""
+    """Validate a single step via MCP apply_resource with dry-run=server.
+
+    When ``step.manifest_path`` is set, the manifest file content is sent
+    as the ``manifest`` argument, enabling content-level validation.
+    Falls back to the command-based path when no manifest is available.
+    """
     try:
-        result = await client.query(
-            "apply_resource",
-            {
-                "command": step.command,
-                "resource": step.resource,
-                "dry_run": "server",
-            },
-        )
+        if step.manifest_path:
+            manifest_file = Path(step.manifest_path)
+            if not manifest_file.is_file():
+                return DryRunStepResult(
+                    step_order=step.order,
+                    command=step.command or "",
+                    success=False,
+                    message="Manifest file not found",
+                    error_detail=f"Missing manifest: {step.manifest_path}",
+                )
+            manifest_content = manifest_file.read_text()
+            result = await client.query(
+                "apply_resource",
+                {"manifest": manifest_content, "dry_run": "server"},
+            )
+        else:
+            result = await client.query(
+                "apply_resource",
+                {
+                    "command": step.command,
+                    "resource": step.resource,
+                    "dry_run": "server",
+                },
+            )
 
         if _response_indicates_error(result):
             logger.warning(

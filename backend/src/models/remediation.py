@@ -41,6 +41,8 @@ class RemediationStep(BaseModel):
     resource: str
     action: str
     expected_outcome: str
+    manifest_path: str | None = None
+    manifest_generation_failed: bool = False
 
 
 PreconditionType = Literal["rbac", "quota", "resource"]
@@ -69,17 +71,28 @@ class RemediationPlan(BaseModel):
     plan_summary: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+    _STEP_HASH_EXCLUDE: frozenset[str] = frozenset({
+        "manifest_path", "manifest_generation_failed",
+    })
+
     def plan_hash(self) -> str:
         """Deterministic hash of plan content for skeptic comparison.
 
         Hashes: steps, blast_radius, rollback_plan, preconditions, estimated_risk.
         Excludes: id, incident_id, diagnosis_id, plan_summary, created_at
-        (these are metadata, not plan substance).
+        (these are metadata, not plan substance), and manifest_path /
+        manifest_generation_failed (post-skeptic artifacts).
         """
         content = {
-            "steps": [s.model_dump(mode="json") for s in self.steps],
+            "steps": [
+                s.model_dump(mode="json", exclude=self._STEP_HASH_EXCLUDE)
+                for s in self.steps
+            ],
             "blast_radius": self.blast_radius.value,
-            "rollback_plan": [s.model_dump(mode="json") for s in self.rollback_plan],
+            "rollback_plan": [
+                s.model_dump(mode="json", exclude=self._STEP_HASH_EXCLUDE)
+                for s in self.rollback_plan
+            ],
             "preconditions": [p.model_dump(mode="json") for p in self.preconditions],
             "estimated_risk": self.estimated_risk.value,
         }

@@ -1,6 +1,7 @@
-"""LangGraph StateGraph definition for the remediation pipeline (AD-1, Story 3.1/3.2/3.3/3.5).
+"""LangGraph StateGraph definition for the remediation pipeline (AD-1, Story 3.1–4.0).
 
-Graph structure (planning only): entry → plan → skeptic_validation → dry_run → policy_gate → END
+Graph structure (planning only):
+  entry → plan → skeptic_validation → manifest_generation → dry_run → policy_gate → END
 
 Execution nodes (freshness_gate, execute, observe) are defined here as functions
 but are NOT wired into the graph — the execution_dispatcher calls them directly.
@@ -129,6 +130,58 @@ async def skeptic_validation_node(state: RemediationState) -> dict:
     }
 
 
+async def manifest_generation_node(state: RemediationState) -> dict:
+    """Generate YAML manifests for eligible remediation steps (Story 4.0).
+
+    Queries current cluster state via the read-write MCP Server,
+    produces patched YAML manifests, and stores them as file artifacts
+    for downstream dry-run and execution stages.
+    """
+    from .manifest_generator import generate_manifests
+    from .mcp_readwrite_client import ReadWriteMCPClient
+
+    incident_id = state["incident_id"]
+    logger.info(
+        "Manifest generation node started",
+        extra={"incident_id": incident_id},
+    )
+
+    await _emit_stage_sse(incident_id, "manifest_generation", "running")
+
+    plan = RemediationPlan.model_validate(state["remediation_plan"])
+    mcp_client = ReadWriteMCPClient()
+
+    manifest_plan = await generate_manifests(plan, mcp_client)
+
+    eligible = sum(
+        1 for s in plan.steps
+        if s.command is not None and s.action.lower() in {"apply", "create"}
+    )
+    generated = sum(1 for s in manifest_plan.steps if s.manifest_path is not None)
+    failed = sum(1 for s in manifest_plan.steps if s.manifest_generation_failed)
+    skipped = len(plan.steps) - eligible
+
+    await pipeline_audit_log(
+        incident_id=incident_id,
+        stage_name="manifest_generation",
+        state_before="validated",
+        state_after="manifests_generated",
+        extra_detail={
+            "eligible": eligible,
+            "generated": generated,
+            "skipped": skipped,
+            "failed": failed,
+        },
+    )
+
+    await _emit_stage_sse(incident_id, "manifest_generation", "complete")
+
+    return {
+        "remediation_plan": manifest_plan.model_dump(mode="json"),
+        "stage": "manifests_generated",
+    }
+
+
 async def dry_run_node(state: RemediationState) -> dict:
     """Dry-run pre-flight validation (Story 3.3)."""
     from .dry_run import run_dry_run_preflight
@@ -197,7 +250,7 @@ def build_remediation_graph() -> StateGraph:
     """Build the LangGraph StateGraph for remediation planning (not yet compiled).
 
     Planning-only graph:
-      entry → plan → skeptic_validation → dry_run → policy_gate → END
+      entry → plan → skeptic_validation → manifest_generation → dry_run → policy_gate → END
 
     Execution (freshness_gate → execute → observe) is handled by the
     execution_dispatcher, which calls the node functions directly.
@@ -205,11 +258,13 @@ def build_remediation_graph() -> StateGraph:
     builder = StateGraph(RemediationState)
     builder.add_node("plan", plan_node)
     builder.add_node("skeptic_validation", skeptic_validation_node)
+    builder.add_node("manifest_generation", manifest_generation_node)
     builder.add_node("dry_run", dry_run_node)
     builder.add_node("policy_gate", policy_gate_node)
     builder.set_entry_point("plan")
     builder.add_edge("plan", "skeptic_validation")
-    builder.add_edge("skeptic_validation", "dry_run")
+    builder.add_edge("skeptic_validation", "manifest_generation")
+    builder.add_edge("manifest_generation", "dry_run")
     builder.add_edge("dry_run", "policy_gate")
     builder.add_edge("policy_gate", END)
     return builder

@@ -145,6 +145,17 @@ async def run_remediation_pipeline(incident_id: uuid.UUID) -> RemediationPlan | 
             )
         await _emit_remediation_event(incident_id, "remediation_plan", "planned")
 
+        plan_for_manifest_check = RemediationPlan.model_validate(plan_dict)
+        manifest_steps = [s for s in plan_for_manifest_check.steps if s.manifest_path]
+        if manifest_steps:
+            await _emit_remediation_event(
+                incident_id, "manifest_generation", "complete",
+                payload={
+                    "manifests_generated": len(manifest_steps),
+                    "total_steps": len(plan_for_manifest_check.steps),
+                },
+            )
+
         if final_state.get("dry_run_result"):
             dr = DryRunResult.model_validate(final_state["dry_run_result"])
             await _emit_remediation_event(
