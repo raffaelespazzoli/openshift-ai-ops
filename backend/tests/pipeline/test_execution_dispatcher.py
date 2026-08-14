@@ -294,3 +294,143 @@ class TestStaleFreshnessGateTerminal:
                     assert len(calls) >= 1
                     final_call = calls[-1]
                     assert final_call[0][3] == "failed"
+
+
+class TestCaseRecordCreatedAfterOutcome:
+    """Verify case record is created after outcome observation (Story 4.1)."""
+
+    async def test_case_record_called_after_successful_outcome(self):
+        incident_id = uuid.uuid4()
+        row = _incident_row(incident_id)
+
+        diagnosis_data = json.dumps({
+            "id": str(uuid.uuid4()),
+            "incident_id": str(incident_id),
+            "root_cause_component": "workload",
+            "failure_mode": "crash-loop",
+            "root_cause_code": "workload/crash-loop",
+            "causal_chain": ["OOM"],
+            "affected_resources": [],
+            "evidence": [],
+            "confidence": 0.8,
+            "agent_summary": "test",
+            "skeptic_verdict": {"approved": True, "reason": "ok"},
+            "sealed_at": "2026-08-10T00:00:00Z",
+        })
+
+        mock_conn = AsyncMock()
+        mock_conn.fetchrow = AsyncMock(return_value={"diagnosis": diagnosis_data})
+        mock_conn.execute = AsyncMock()
+        mock_conn.transaction = MagicMock(return_value=_FakeTxn())
+
+        mock_pool = MagicMock()
+        mock_pool.acquire.return_value = _AsyncCtx(mock_conn)
+
+        mock_freshness = MagicMock()
+        mock_freshness.is_fresh = True
+
+        from src.models.execution import ExecutionLog, OutcomeResult
+
+        mock_outcome = OutcomeResult(
+            incident_id=incident_id,
+            alert_resolved=True,
+            resolution_method="webhook",
+            outcome_confidence=0.7,
+        )
+
+        mock_exec_log = ExecutionLog(
+            incident_id=incident_id,
+            plan_id=uuid.uuid4(),
+            status="completed",
+        )
+
+        with (
+            patch(
+                "src.pipeline.execution_dispatcher.get_pool",
+                new_callable=AsyncMock, return_value=mock_pool,
+            ),
+            patch(
+                "src.pipeline.freshness_gate.check_freshness",
+                new_callable=AsyncMock, return_value=mock_freshness,
+            ),
+            patch(
+                "src.pipeline.execution_dispatcher.execute_remediation",
+                new_callable=AsyncMock, return_value=mock_exec_log,
+            ),
+            patch(
+                "src.pipeline.execution_dispatcher.observe_outcome",
+                new_callable=AsyncMock, return_value=mock_outcome,
+            ),
+            patch(
+                "src.pipeline.execution_dispatcher.persist_execution_log",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.execution_dispatcher.persist_outcome_result",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.execution_dispatcher.transition_incident_state",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.execution_dispatcher.pipeline_audit_log",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.case_record_writer.create_case_record",
+                new_callable=AsyncMock, return_value=MagicMock(),
+            ) as mock_create_cr,
+            patch(
+                "src.pipeline.execution_dispatcher._emit_execution_event",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "src.pipeline.execution_dispatcher.monitor_for_refire",
+                new_callable=AsyncMock,
+            ),
+        ):
+            from src.pipeline.execution_dispatcher import _run_execution_cycle
+
+            await _run_execution_cycle(incident_id, row, FAST_SETTINGS)
+            mock_create_cr.assert_called_once_with(incident_id)
+
+
+class TestRefireTriggersDowngrade:
+    """Verify re-fire detection triggers case record downgrade (Story 4.1)."""
+
+    async def test_refire_calls_downgrade(self):
+        incident_id = uuid.uuid4()
+
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock()
+        mock_pool = MagicMock()
+        mock_pool.acquire.return_value = _AsyncCtx(mock_conn)
+
+        async def _fake_check(conn, iid):
+            return True
+
+        with (
+            patch(
+                "src.pipeline.outcome_observer.get_pool",
+                new_callable=AsyncMock, return_value=mock_pool,
+            ),
+            patch(
+                "src.pipeline.outcome_observer._check_alert_refired",
+                side_effect=_fake_check,
+            ),
+            patch(
+                "src.db.case_records.downgrade_case_record",
+                new_callable=AsyncMock,
+            ) as mock_downgrade,
+        ):
+            from src.pipeline.outcome_observer import monitor_for_refire
+
+            result = await monitor_for_refire(
+                incident_id, settings=FAST_SETTINGS, _sleep=AsyncMock(),
+            )
+            assert result is True
+            mock_downgrade.assert_called_once()
+            call_args = mock_downgrade.call_args
+            assert call_args[0][1] == incident_id
+            assert call_args[1]["new_confidence"] == 0.2

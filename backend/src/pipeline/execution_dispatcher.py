@@ -232,6 +232,20 @@ async def _run_execution_cycle(
         },
     )
 
+    try:
+        from .case_record_writer import create_case_record
+
+        case_record = await create_case_record(incident_id)
+        if case_record:
+            await _emit_execution_event(
+                incident_id, "learning_store", "case_record_created",
+            )
+    except Exception:
+        logger.warning(
+            "Case record creation failed — non-fatal",
+            extra={"incident_id": str(incident_id)},
+        )
+
     if outcome.alert_resolved:
         asyncio.create_task(_background_refire_monitor(incident_id))
 
@@ -349,6 +363,20 @@ async def _run_recovery_observation(
             "resolution_method": outcome.resolution_method,
         },
     )
+
+    try:
+        from .case_record_writer import create_case_record
+
+        case_record = await create_case_record(incident_id)
+        if case_record:
+            await _emit_execution_event(
+                incident_id, "learning_store", "case_record_created",
+            )
+    except Exception:
+        logger.warning(
+            "Case record creation failed — non-fatal",
+            extra={"incident_id": str(incident_id)},
+        )
 
     if outcome.alert_resolved:
         asyncio.create_task(_background_refire_monitor(incident_id))
