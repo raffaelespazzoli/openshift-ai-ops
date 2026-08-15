@@ -15,8 +15,9 @@ export class ApiClientError extends Error {
 }
 
 function getToken(): string | null {
-  const devToken = import.meta.env.VITE_DEV_TOKEN;
-  if (devToken) return devToken;
+  if (import.meta.env.DEV && import.meta.env.VITE_DEV_TOKEN) {
+    return import.meta.env.VITE_DEV_TOKEN;
+  }
   return localStorage.getItem('oauth_token');
 }
 

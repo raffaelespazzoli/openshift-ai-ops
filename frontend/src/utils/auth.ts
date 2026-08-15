@@ -20,8 +20,7 @@ export function clearToken(): void {
 }
 
 export function isAuthenticated(): boolean {
-  const devToken = import.meta.env.VITE_DEV_TOKEN;
-  if (devToken) return true;
+  if (import.meta.env.DEV && import.meta.env.VITE_DEV_TOKEN) return true;
   return getStoredToken() !== null;
 }
 

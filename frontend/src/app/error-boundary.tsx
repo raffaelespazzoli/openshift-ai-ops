@@ -37,8 +37,6 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
-      const isDev = import.meta.env.DEV;
-
       return (
         <EmptyState
           headingLevel="h2"
@@ -47,9 +45,7 @@ export class ErrorBoundary extends Component<Props, State> {
           status="danger"
         >
           <EmptyStateBody>
-            {isDev
-              ? this.state.error?.message || 'An unexpected error occurred.'
-              : 'Something went wrong. Please try again.'}
+            Something went wrong. Please try again.
           </EmptyStateBody>
           <EmptyStateFooter>
             <EmptyStateActions>
