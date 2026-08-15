@@ -4,7 +4,7 @@ baseline_commit: 0c2ad975da9a78f283e948a6dd2ece028faeac6c
 
 # Story 5.6: Keyboard Shortcuts & Accessibility
 
-Status: in-progress
+Status: done
 
 ## Story
 
@@ -649,17 +649,26 @@ No new npm packages needed — all required packages installed in previous stori
 
 ### Review Round 1 — 2026-08-15
 **Review model:** Claude Opus 4.6 (via Cursor subagent)
-**Fix model:** _(to be filled when fixes are applied)_
+**Fix model:** Claude Opus 4.6 (via Cursor subagent)
 
 #### Findings
 
-- [ ] [Review][Patch] Enter key shortcut intercepts native button/link activation [`use-keyboard-shortcuts.ts:14-18`] — Focus guard only checks input/textarea/select/contenteditable but not button/a/role="button". When user tabs to any button or link on the list page and presses Enter, the shortcut fires and calls preventDefault(), making interactive elements inoperable via keyboard. WCAG 2.1.1 (Keyboard) violation.
-- [ ] [Review][Patch] DataList missing tabIndex={0} for aria-activedescendant pattern [`incidents-list.tsx:59-61`] — aria-activedescendant requires the container to be focusable. Without tabIndex={0} on the DataList, screen readers cannot track the focused row. Spec Task 2.2 explicitly requires tabIndex={0}.
-- [ ] [Review][Patch] hidden attribute on plan-summary span prevents screen reader access [`approval-actions.tsx:101`] — Uses HTML `hidden` attribute instead of `className="pf-v6-u-screen-reader"`. Elements with `hidden` are removed from the accessibility tree, so aria-describedby pointing to it is not announced. AC#8 not satisfied.
-- [ ] [Review][Patch] aria-expanded on role="tab" elements is non-standard [`pipeline-stepper.tsx:119`] — WAI-ARIA APG Tabs pattern does not use aria-expanded on tab elements (use aria-selected only). Having both causes screen readers to announce "expanded/collapsed" on tabs, which is misleading for a tablist pattern.
-- [ ] [Review][Patch] PipelineStepper steals focus on initial mount [`pipeline-stepper.tsx:97-99`] — useEffect fires on mount with focusedStageIndex=0, calling stepRefs.current[0]?.focus(). This competes with breadcrumb focus (AC#10). Should only focus on user arrow-key interaction, not on mount.
-- [ ] [Review][Patch] Focus restoration may silently fail if TanStack Query cache is cold [`index.tsx:29-38`] — Effect uses empty deps array and reads items[returnIndex] at mount. If data hasn't loaded yet (cache miss), items is empty and restoration does nothing. Low probability but easy to guard against with a ref-based one-shot check after data loads.
+- [x] [Review][Patch] Enter key shortcut intercepts native button/link activation [`use-keyboard-shortcuts.ts:14-18`] — Focus guard only checks input/textarea/select/contenteditable but not button/a/role="button". When user tabs to any button or link on the list page and presses Enter, the shortcut fires and calls preventDefault(), making interactive elements inoperable via keyboard. WCAG 2.1.1 (Keyboard) violation. **Fixed**: Extended INTERACTIVE_SELECTOR to include button/a/role="button"/role="link"/role="tab"/role="menuitem"; Enter/Space on interactive elements pass through; Enter additionally scoped via containerSelector.
+- [x] [Review][Patch] DataList missing tabIndex={0} for aria-activedescendant pattern [`incidents-list.tsx:59-61`] — aria-activedescendant requires the container to be focusable. Without tabIndex={0} on the DataList, screen readers cannot track the focused row. Spec Task 2.2 explicitly requires tabIndex={0}. **Fixed**: Added tabIndex={0} to DataList component.
+- [x] [Review][Patch] hidden attribute on plan-summary span prevents screen reader access [`approval-actions.tsx:101`] — Uses HTML `hidden` attribute instead of `className="pf-v6-u-screen-reader"`. Elements with `hidden` are removed from the accessibility tree, so aria-describedby pointing to it is not announced. AC#8 not satisfied. **Fixed**: Replaced `hidden` attribute with `className="pf-v6-u-screen-reader"`.
+- [x] [Review][Patch] aria-expanded on role="tab" elements is non-standard [`pipeline-stepper.tsx:119`] — WAI-ARIA APG Tabs pattern does not use aria-expanded on tab elements (use aria-selected only). Having both causes screen readers to announce "expanded/collapsed" on tabs, which is misleading for a tablist pattern. **Fixed**: Removed aria-expanded, retained aria-selected only.
+- [x] [Review][Patch] PipelineStepper steals focus on initial mount [`pipeline-stepper.tsx:97-99`] — useEffect fires on mount with focusedStageIndex=0, calling stepRefs.current[0]?.focus(). This competes with breadcrumb focus (AC#10). Should only focus on user arrow-key interaction, not on mount. **Fixed**: Added hasInteracted ref; focus only fires after user arrow-key/Home/End interaction.
+- [x] [Review][Patch] Focus restoration may silently fail if TanStack Query cache is cold [`index.tsx:29-38`] — Effect uses empty deps array and reads items[returnIndex] at mount. If data hasn't loaded yet (cache miss), items is empty and restoration does nothing. Low probability but easy to guard against with a ref-based one-shot check after data loads. **Fixed**: Changed dependency from [] to [items.length] with guard `if (items.length === 0) return`.
 - [x] [Review][Defer] AC#7 aria-label uses state/severity instead of RCE label and alert count [`incidents-list.tsx:71`] — deferred, pre-existing from Story 5.2 data model which exposes incidents directly rather than RCE groups with label/alertCount fields
+
+### Review Round 2 — 2026-08-15
+**Review model:** Claude Opus 4.6 (via Cursor subagent)
+
+#### Findings
+
+All 6 iter-1 findings verified fixed. Three review layers (Blind Hunter, Edge Case Hunter, Acceptance Auditor) produced 0 new findings. All 12 acceptance criteria satisfied (AC#7 deferred per iter-1 — pre-existing data model limitation).
+
+✅ Clean review — all layers passed.
 
 ## Dev Agent Record
 
