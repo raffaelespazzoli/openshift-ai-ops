@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Button,
   DataList,
   DataListItem,
   DataListItemRow,
@@ -68,27 +69,15 @@ export function IncidentsList({ items }: IncidentsListProps) {
                     <Label color={SEVERITY_VARIANT[item.severity]}>{item.severity}</Label>
                   </DataListCell>,
                   <DataListCell key="state" width={2}>
-                    <button
-                      type="button"
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        padding: 0,
-                        cursor: 'pointer',
-                        color: 'inherit',
-                        font: 'inherit',
-                        textDecoration: 'underline',
-                      }}
-                      onClick={() => handleRowClick(item.id)}
-                    >
+                    <Button variant="link" isInline onClick={() => handleRowClick(item.id)}>
                       {formatState(item.state)}
-                    </button>
+                    </Button>
                   </DataListCell>,
                   <DataListCell key="time" width={2}>
                     {formatRelativeTime(item.created_at)}
                   </DataListCell>,
                   <DataListCell key="fast-path" width={1}>
-                    {item.fast_path && <Label color="green">Fast path</Label>}
+                    {item.fast_path && <Label color="blue" isCompact>Fast-Path</Label>}
                   </DataListCell>,
                 ]}
               />

@@ -77,16 +77,15 @@ describe('IncidentsToolbar', () => {
   });
 
   it('renders pagination with correct item count', () => {
-    const { container } = render(
+    render(
       <IncidentsToolbar
         filters={defaultFilters({ page: 1, pageSize: 50 })}
         total={120}
         onFiltersChange={vi.fn()}
       />,
     );
-    const paginationDiv = container.querySelector('.pf-v6-c-pagination');
-    expect(paginationDiv).not.toBeNull();
-    expect(paginationDiv!.textContent).toContain('120');
+    const matches = screen.getAllByText(/120/);
+    expect(matches.length).toBeGreaterThan(0);
   });
 
   it('has no accessibility violations', async () => {

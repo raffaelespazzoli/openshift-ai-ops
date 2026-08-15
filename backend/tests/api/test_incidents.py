@@ -86,13 +86,21 @@ class TestListIncidents:
         data = resp.json()["data"]
         assert len(data) >= 1
 
-    async def test_no_pagination_params_accepted(self, async_client):
-        """v1 has no pagination — page/page_size params are not accepted."""
-        resp = await async_client.get("/api/v1/incidents?page=1&page_size=10")
+    async def test_default_pagination_params(self, async_client):
+        """Default pagination returns page=1, page_size=50."""
+        resp = await async_client.get("/api/v1/incidents")
         assert resp.status_code == 200
         meta = resp.json()["meta"]
-        assert meta.get("page") is None
-        assert meta.get("page_size") is None
+        assert meta["page"] == 1
+        assert meta["page_size"] == 50
+
+    async def test_custom_pagination_params(self, async_client):
+        """Custom page and page_size are respected."""
+        resp = await async_client.get("/api/v1/incidents?page=2&page_size=10")
+        assert resp.status_code == 200
+        meta = resp.json()["meta"]
+        assert meta["page"] == 2
+        assert meta["page_size"] == 10
 
 
 class TestGetIncidentDetail:

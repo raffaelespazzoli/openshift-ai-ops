@@ -14,13 +14,13 @@ const ACTIVE_STATES = [
   'observing',
 ];
 
-function buildParams(filters: IncidentFilters): Record<string, string> {
-  const params: Record<string, string> = {};
+function buildParams(filters: IncidentFilters): Record<string, string | string[]> {
+  const params: Record<string, string | string[]> = {};
 
   if (filters.mode === 'firing') {
-    params['status'] = ACTIVE_STATES.join(',');
+    params['status'] = ACTIVE_STATES;
   } else {
-    params['status'] = 'resolved,failed';
+    params['status'] = ['resolved', 'failed'];
     if (filters.timeRange) {
       const now = Date.now();
       const msMap: Record<string, number> = {
@@ -34,7 +34,7 @@ function buildParams(filters: IncidentFilters): Record<string, string> {
   }
 
   if (filters.severities.length > 0 && filters.severities.length < 3) {
-    params['severity'] = filters.severities.join(',');
+    params['severity'] = filters.severities;
   }
 
   params['page'] = String(filters.page);

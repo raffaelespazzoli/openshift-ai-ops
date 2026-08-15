@@ -12,8 +12,8 @@ describe('IncidentsSkeleton', () => {
   });
 
   it('renders 8 skeleton rows', () => {
-    const { container } = render(<IncidentsSkeleton />);
-    const items = container.querySelectorAll('[id^="skeleton-"]');
+    render(<IncidentsSkeleton />);
+    const items = screen.getAllByRole('listitem');
     expect(items).toHaveLength(8);
   });
 

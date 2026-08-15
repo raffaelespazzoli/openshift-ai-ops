@@ -173,7 +173,12 @@ async def list_incidents(
         SELECT i.id, i.state, i.severity, i.created_at, i.updated_at, i.fast_path
         FROM incidents i
         {where_clause}
-        ORDER BY i.created_at DESC
+        ORDER BY CASE i.severity
+            WHEN 'critical' THEN 1
+            WHEN 'warning' THEN 2
+            WHEN 'info' THEN 3
+            ELSE 4
+        END, i.created_at DESC
         LIMIT {limit_param} OFFSET {offset_param}
     """
     rows = await conn.fetch(data_query, *params, page_size, offset)

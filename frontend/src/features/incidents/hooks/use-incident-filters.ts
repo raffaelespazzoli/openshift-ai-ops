@@ -21,7 +21,7 @@ function parseFilters(params: URLSearchParams): IncidentFilters {
   const timeRange: IncidentFilters['timeRange'] =
     rawTimeRange && VALID_TIME_RANGES.has(rawTimeRange)
       ? (rawTimeRange as IncidentFilters['timeRange'])
-      : undefined;
+      : '24h';
 
   const page = Math.max(1, Number(params.get('page')) || 1);
   const pageSize = Math.min(200, Math.max(1, Number(params.get('pageSize')) || 50));

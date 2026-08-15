@@ -50,7 +50,7 @@ describe('IncidentsList', () => {
 
   it('shows fast-path label when applicable', () => {
     renderWithRouter(ITEMS);
-    expect(screen.getByText('Fast path')).toBeInTheDocument();
+    expect(screen.getByText('Fast-Path')).toBeInTheDocument();
   });
 
   it('expands details on toggle click', async () => {

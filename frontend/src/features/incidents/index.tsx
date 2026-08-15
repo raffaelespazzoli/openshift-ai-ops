@@ -4,7 +4,6 @@ import {
   EmptyStateActions,
   EmptyStateBody,
   EmptyStateFooter,
-  Title,
 } from '@patternfly/react-core';
 import { CheckCircleIcon, ExclamationCircleIcon } from '@patternfly/react-icons';
 import { useIncidentFilters } from './hooks/use-incident-filters';
