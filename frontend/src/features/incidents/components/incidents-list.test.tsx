@@ -56,13 +56,51 @@ describe('IncidentsList', () => {
   it('expands details on toggle click', async () => {
     const user = userEvent.setup();
     renderWithRouter(ITEMS);
-    const toggles = screen.getAllByRole('button', { name: /details/i });
+    const toggles = screen.getAllByRole('button', { name: /expand/i });
     await user.click(toggles[0]!);
     const expandedSection = screen.getByLabelText(
       `Details for incident ${ITEMS[0]!.id}`,
     );
     expect(expandedSection).not.toHaveAttribute('hidden');
     expect(expandedSection).toHaveTextContent(ITEMS[0]!.id);
+  });
+
+  it('renders aria-label on DataListItems with state info', () => {
+    renderWithRouter(ITEMS);
+    expect(
+      screen.getByLabelText(/Root-Cause Event: Diagnosing, severity critical, collapsed/),
+    ).toBeInTheDocument();
+  });
+
+  it('renders aria-controls on toggle buttons linking to content', () => {
+    renderWithRouter(ITEMS);
+    const toggles = screen.getAllByRole('button', { name: /expand/i });
+    expect(toggles[0]).toHaveAttribute(
+      'aria-controls',
+      `content-${ITEMS[0]!.id}`,
+    );
+  });
+
+  it('applies focused row styling when focusedIndex is set', () => {
+    render(
+      <MemoryRouter>
+        <IncidentsList items={ITEMS} focusedIndex={0} />
+      </MemoryRouter>,
+    );
+    const focusedItem = screen.getByLabelText(/Root-Cause Event: Diagnosing/);
+    expect(focusedItem).toHaveStyle({
+      outline: '2px solid var(--pf-t--global--border--color--hover)',
+    });
+  });
+
+  it('sets aria-activedescendant when item is focused', () => {
+    render(
+      <MemoryRouter>
+        <IncidentsList items={ITEMS} focusedIndex={1} />
+      </MemoryRouter>,
+    );
+    const list = screen.getByRole('list', { name: 'Incidents list' });
+    expect(list).toHaveAttribute('aria-activedescendant', ITEMS[1]!.id);
   });
 
   it('has no accessibility violations', async () => {

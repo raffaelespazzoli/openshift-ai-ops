@@ -92,7 +92,8 @@ export function MttrChart({ data, isPending }: MttrChartProps) {
       <CardBody>
         <div
           ref={containerRef}
-          aria-label={`MTTR chart: average ${formatSeconds(avgMttr)} over the selected period`}
+          role="img"
+          aria-label={`Area chart showing mean time to resolution. Average: ${formatSeconds(avgMttr)} over the selected period.`}
         >
           <Chart
             ariaTitle="Mean time to resolution"

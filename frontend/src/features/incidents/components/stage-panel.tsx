@@ -13,7 +13,7 @@ export function StagePanel({ stageId, stageLabel, isExpanded, children }: StageP
 
   return (
     <Card
-      role="region"
+      role="tabpanel"
       aria-labelledby={`stage-${stageId}-title`}
       aria-label={`${stageLabel} stage details`}
     >

@@ -1,3 +1,5 @@
+import { useCallback, useEffect, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Button,
   EmptyState,
@@ -8,13 +10,60 @@ import {
 import { CheckCircleIcon, ExclamationCircleIcon } from '@patternfly/react-icons';
 import { useIncidentFilters } from './hooks/use-incident-filters';
 import { useIncidents } from './hooks/use-incidents';
+import { useListKeyboardNav } from './hooks/use-list-keyboard-nav';
+import { useKeyboardShortcuts } from '@hooks/use-keyboard-shortcuts';
 import { IncidentsToolbar } from './components/incidents-toolbar';
 import { IncidentsList } from './components/incidents-list';
 import { IncidentsSkeleton } from './components/incidents-skeleton';
 
 export default function IncidentsPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { filters, setFilters } = useIncidentFilters();
   const { data, isPending, isError, refetch } = useIncidents(filters);
+
+  const items = useMemo(() => data?.items ?? [], [data]);
+  const { focusedIndex, focusedId, moveDown, moveUp, setFocusedIndex } =
+    useListKeyboardNav(items);
+
+  useEffect(() => {
+    const returnIndex = (location.state as { returnFocusIndex?: number } | null)?.returnFocusIndex;
+    if (returnIndex === undefined || returnIndex < 0) return;
+    if (items.length === 0) return;
+    setFocusedIndex(returnIndex);
+    requestAnimationFrame(() => {
+      const id = items[returnIndex]?.id;
+      if (id) document.getElementById(id)?.scrollIntoView({ block: 'nearest' });
+    });
+  }, [items.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openFocused = useCallback(() => {
+    if (focusedId) {
+      navigate(`/incidents/${focusedId}`, {
+        state: { returnFocusIndex: focusedIndex, returnSearch: location.search },
+      });
+    }
+  }, [focusedId, focusedIndex, navigate, location.search]);
+
+  const shortcuts = useMemo(
+    () => ({
+      j: moveDown,
+      k: moveUp,
+      Enter: openFocused,
+    }),
+    [moveDown, moveUp, openFocused],
+  );
+
+  useKeyboardShortcuts(shortcuts, { enabled: !isPending && !isError, containerSelector: '[aria-label="Incidents list"]' });
+
+  const handleRowActivate = useCallback(
+    (id: string, index: number) => {
+      navigate(`/incidents/${id}`, {
+        state: { returnFocusIndex: index, returnSearch: location.search },
+      });
+    },
+    [navigate, location.search],
+  );
 
   if (isPending) {
     return (
@@ -60,7 +109,11 @@ export default function IncidentsPage() {
   return (
     <>
       <IncidentsToolbar filters={filters} total={data.total} onFiltersChange={setFilters} />
-      <IncidentsList items={data.items} />
+      <IncidentsList
+        items={data.items}
+        focusedIndex={focusedIndex}
+        onRowActivate={handleRowActivate}
+      />
     </>
   );
 }
