@@ -28,6 +28,7 @@ from .health import router as health_router
 from .incidents import router as incidents_router
 from .learning_store_config import router as learning_store_config_router
 from .rollback import router as rollback_router
+from .statistics import router as statistics_router
 from .webhooks import router as webhooks_router
 
 setup_logging()
@@ -278,6 +279,7 @@ def create_app() -> FastAPI:
     app.include_router(events_router)
     app.include_router(approval_router)
     app.include_router(rollback_router)
+    app.include_router(statistics_router)
     app.include_router(learning_store_config_router)
 
     return app
