@@ -83,7 +83,7 @@ development_status:
   epic-4-retrospective: done
 
   # Epic 5: Operational Web UI & Approval Workflow
-  epic-5: in-progress
+  epic-5: done
   5-1-frontend-scaffolding-and-app-shell: done
   5-2-incidents-list-view: done
   5-3-incident-detail-view-and-pipeline-visualization: done
