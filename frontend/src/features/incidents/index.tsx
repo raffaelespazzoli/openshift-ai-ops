@@ -28,14 +28,14 @@ export default function IncidentsPage() {
 
   useEffect(() => {
     const returnIndex = (location.state as { returnFocusIndex?: number } | null)?.returnFocusIndex;
-    if (returnIndex !== undefined && returnIndex >= 0) {
-      setFocusedIndex(returnIndex);
-      requestAnimationFrame(() => {
-        const id = items[returnIndex]?.id;
-        if (id) document.getElementById(id)?.scrollIntoView({ block: 'nearest' });
-      });
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (returnIndex === undefined || returnIndex < 0) return;
+    if (items.length === 0) return;
+    setFocusedIndex(returnIndex);
+    requestAnimationFrame(() => {
+      const id = items[returnIndex]?.id;
+      if (id) document.getElementById(id)?.scrollIntoView({ block: 'nearest' });
+    });
+  }, [items.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openFocused = useCallback(() => {
     if (focusedId) {
@@ -54,7 +54,7 @@ export default function IncidentsPage() {
     [moveDown, moveUp, openFocused],
   );
 
-  useKeyboardShortcuts(shortcuts, { enabled: !isPending && !isError });
+  useKeyboardShortcuts(shortcuts, { enabled: !isPending && !isError, containerSelector: '[aria-label="Incidents list"]' });
 
   const handleRowActivate = useCallback(
     (id: string, index: number) => {

@@ -50,6 +50,7 @@ export function PipelineStepper({ stages, expandedStage, onStageClick }: Pipelin
   const [focusedStageIndex, setFocusedStageIndex] = useState(0);
   const stepRefs = useRef<(HTMLElement | null)[]>([]);
   const prevStagesRef = useRef<PipelineStageConfig[]>(stages);
+  const hasInteracted = useRef(false);
   const [announcement, setAnnouncement] = useState('');
 
   useEffect(() => {
@@ -70,18 +71,22 @@ export function PipelineStepper({ stages, expandedStage, onStageClick }: Pipelin
       switch (event.key) {
         case 'ArrowRight':
           event.preventDefault();
+          hasInteracted.current = true;
           setFocusedStageIndex((prev) => Math.min(prev + 1, stages.length - 1));
           break;
         case 'ArrowLeft':
           event.preventDefault();
+          hasInteracted.current = true;
           setFocusedStageIndex((prev) => Math.max(prev - 1, 0));
           break;
         case 'Home':
           event.preventDefault();
+          hasInteracted.current = true;
           setFocusedStageIndex(0);
           break;
         case 'End':
           event.preventDefault();
+          hasInteracted.current = true;
           setFocusedStageIndex(stages.length - 1);
           break;
         case 'Enter':
@@ -95,7 +100,9 @@ export function PipelineStepper({ stages, expandedStage, onStageClick }: Pipelin
   );
 
   useEffect(() => {
-    stepRefs.current[focusedStageIndex]?.focus();
+    if (hasInteracted.current) {
+      stepRefs.current[focusedStageIndex]?.focus();
+    }
   }, [focusedStageIndex]);
 
   return (
@@ -116,7 +123,6 @@ export function PipelineStepper({ stages, expandedStage, onStageClick }: Pipelin
               aria-label={`${stage.label}: ${ARIA_STATE_MAP[stage.state]}`}
               className={stage.state === 'skipped' ? 'pf-m-disabled' : undefined}
               onClick={() => onStageClick(index)}
-              aria-expanded={expandedStage === index}
               ref={(el: HTMLElement | null) => {
                 stepRefs.current[index] = el;
               }}

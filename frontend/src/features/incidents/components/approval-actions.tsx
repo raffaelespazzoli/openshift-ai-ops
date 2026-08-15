@@ -98,7 +98,7 @@ export function ApprovalActions({ incidentId, planSummary }: ApprovalActionsProp
       </Split>
 
       {planSummary && (
-        <span id={`plan-summary-${incidentId}`} hidden>
+        <span id={`plan-summary-${incidentId}`} className="pf-v6-u-screen-reader">
           {planSummary}
         </span>
       )}

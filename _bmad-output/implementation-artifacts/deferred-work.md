@@ -10,3 +10,7 @@
 
 - No 401 differentiation in SSE reconnect (`use-sse.ts:74-75`) — SSE reconnect treats 401 the same as other errors, causing infinite backoff retries on expired tokens. Auth interceptor is an app-level concern beyond story 5.4's scope.
 - No optimistic update on Approve/Reject (`use-approve-incident.ts`, `use-reject-incident.ts`) — Task 1.4 mentions "optimistic UI transition" but cache invalidation is functionally correct. Optimistic updates add complexity for marginal UX gain.
+
+## Deferred from: code review of 5-6-keyboard-shortcuts-and-accessibility (2026-08-15)
+
+- AC#7 aria-label uses state/severity instead of RCE label and alert count — The IncidentListItem model from Story 5.2 doesn't expose RCE group labels or correlated alert counts on list items. The AC assumes RCE-grouped data but the implemented model shows individual incidents with state/severity. Requires Story 5.2 data model extension to satisfy AC#7 fully.

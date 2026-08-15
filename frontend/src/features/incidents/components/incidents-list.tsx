@@ -59,6 +59,7 @@ export function IncidentsList({ items, focusedIndex = -1, onRowActivate }: Incid
     <DataList
       aria-label="Incidents list"
       aria-activedescendant={focusedId}
+      tabIndex={0}
     >
       {items.map((item, index) => {
         const isExpanded = expanded.has(item.id);

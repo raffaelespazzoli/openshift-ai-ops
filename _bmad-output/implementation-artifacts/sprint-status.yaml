@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-08-08
-last_updated: 2026-08-15T21:45:00Z
+last_updated: 2026-08-15T21:50:00Z
 project: openshift-ai-ops
 project_key: NOKEY
 tracking_system: file-system
@@ -89,7 +89,7 @@ development_status:
   5-3-incident-detail-view-and-pipeline-visualization: done
   5-4-approval-workflow-and-real-time-updates: done
   5-5-statistics-dashboard: done
-  5-6-keyboard-shortcuts-and-accessibility: review
+  5-6-keyboard-shortcuts-and-accessibility: in-progress
   epic-5-retrospective: optional
 
   # Epic 6: LLM Configuration & Optimization
