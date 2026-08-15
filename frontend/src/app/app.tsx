@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Badge,
@@ -18,13 +18,26 @@ import {
   ToolbarItem,
 } from '@patternfly/react-core';
 import { ThemeToggle } from '@components/theme-toggle';
+import { KeyboardShortcutsHelp } from '@components/keyboard-shortcuts-help';
+import { KeyboardShortcutsProvider } from '@providers/keyboard-shortcuts-context';
+import { useKeyboardShortcuts } from '@hooks/use-keyboard-shortcuts';
 import { useAwaitingApprovalCount } from '@features/incidents/hooks/use-awaiting-approval-count';
 import { AppRoutes } from './routes';
 
-export function App() {
+function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const { data: awaitingCount } = useAwaitingApprovalCount();
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
+
+  const shortcuts = useMemo(
+    () => ({
+      '?': () => setIsHelpOpen((prev) => !prev),
+    }),
+    [],
+  );
+
+  useKeyboardShortcuts(shortcuts);
 
   const onNavSelect = useCallback(
     (_event: React.FormEvent<HTMLInputElement>, result: { itemId: number | string }) => {
@@ -83,6 +96,15 @@ export function App() {
       <PageSection>
         <AppRoutes />
       </PageSection>
+      <KeyboardShortcutsHelp isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </Page>
+  );
+}
+
+export function App() {
+  return (
+    <KeyboardShortcutsProvider>
+      <AppShell />
+    </KeyboardShortcutsProvider>
   );
 }

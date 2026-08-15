@@ -85,7 +85,8 @@ export function ActivityChart({ data, isPending }: ActivityChartProps) {
       <CardBody>
         <div
           ref={containerRef}
-          aria-label={`Activity chart: ${data.alerts.reduce((a, b) => a + b, 0)} alerts, ${data.diagnoses.reduce((a, b) => a + b, 0)} diagnoses, ${data.resolutions.reduce((a, b) => a + b, 0)} resolutions in selected period`}
+          role="img"
+          aria-label={`Line chart showing alerts, diagnoses, and resolutions. Total alerts: ${data.alerts.reduce((a, b) => a + b, 0)}. Peak: ${Math.max(...data.alerts)} alerts on ${new Date(data.buckets[data.alerts.indexOf(Math.max(...data.alerts))] ?? '').toLocaleDateString('en-US', { weekday: 'long' })}.`}
         >
           <Chart
             ariaTitle="Activity over time"

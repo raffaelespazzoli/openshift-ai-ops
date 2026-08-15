@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useLocation, Link } from 'react-router-dom';
 import {
   Breadcrumb,
@@ -16,6 +16,8 @@ import { ExclamationCircleIcon } from '@patternfly/react-icons';
 import SearchIcon from '@patternfly/react-icons/dist/esm/icons/search-icon';
 import { useIncidentDetail } from '../hooks/use-incident-detail';
 import { useIncidentSSE } from '../hooks/use-incident-sse';
+import { useApproveIncident } from '../hooks/use-approve-incident';
+import { useDetailKeyboardNav } from '../hooks/use-detail-keyboard-nav';
 import { getStageStates } from '@utils/pipeline-stages';
 import { PipelineStepper } from '../components/pipeline-stepper';
 import { StagePanel } from '../components/stage-panel';
@@ -32,6 +34,7 @@ export default function IncidentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
   const returnSearch = (location.state as { returnSearch?: string } | null)?.returnSearch ?? '';
+  const breadcrumbRef = useRef<HTMLElement>(null);
 
   const { connectionState } = useIncidentSSE({ incidentId: id, enabled: !!id });
   const isSSEUnavailable = connectionState === 'disconnected' || connectionState === 'reconnecting';
@@ -44,6 +47,8 @@ export default function IncidentDetailPage() {
       return 5000;
     },
   });
+
+  const approveMutation = useApproveIncident(id ?? '');
 
   const isTerminal = incident ? TERMINAL_STATES.has(incident.state) : false;
   const shouldPoll = isSSEUnavailable && !isTerminal;
@@ -63,6 +68,20 @@ export default function IncidentDetailPage() {
   const handleStageClick = useCallback((index: number) => {
     setExpandedStage((prev) => (prev === index ? null : index));
   }, []);
+
+  useEffect(() => {
+    if (!isPending && incident) {
+      breadcrumbRef.current?.focus();
+    }
+  }, [isPending, !!incident]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useDetailKeyboardNav({
+    incidentState: incident?.state ?? '',
+    expandedStage,
+    stageCount: stages.length,
+    onStageSelect: handleStageClick,
+    onApprove: incident?.state === 'awaiting_approval' ? () => approveMutation.mutate() : undefined,
+  });
 
   if (isPending) {
     return (
@@ -121,7 +140,7 @@ export default function IncidentDetailPage() {
 
   return (
     <div>
-      <Breadcrumb>
+      <Breadcrumb ref={breadcrumbRef} tabIndex={-1}>
         <BreadcrumbItem>
           <Link to={`/incidents${returnSearch}`}>Incidents</Link>
         </BreadcrumbItem>

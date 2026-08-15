@@ -79,6 +79,70 @@ describe('PipelineStepper', () => {
     expect(disabledSteps.length).toBe(3);
   });
 
+  it('supports arrow key navigation between stages', () => {
+    const onStageClick = vi.fn();
+    render(
+      <PipelineStepper stages={defaultStages} expandedStage={null} onStageClick={onStageClick} />,
+    );
+
+    const firstStep = screen.getByLabelText('Triage: completed');
+    firstStep.focus();
+
+    fireEvent.keyDown(firstStep.closest('[role="tablist"]')!, { key: 'ArrowRight' });
+    expect(document.activeElement).toHaveAttribute('aria-label', 'Diagnosis: completed');
+
+    fireEvent.keyDown(firstStep.closest('[role="tablist"]')!, { key: 'ArrowLeft' });
+    expect(document.activeElement).toHaveAttribute('aria-label', 'Triage: completed');
+  });
+
+  it('supports Home/End key navigation', () => {
+    render(
+      <PipelineStepper stages={defaultStages} expandedStage={null} onStageClick={vi.fn()} />,
+    );
+
+    const container = screen.getByRole('tablist');
+    fireEvent.keyDown(container, { key: 'End' });
+    expect(document.activeElement).toHaveAttribute('aria-label', 'Outcome: pending');
+
+    fireEvent.keyDown(container, { key: 'Home' });
+    expect(document.activeElement).toHaveAttribute('aria-label', 'Triage: completed');
+  });
+
+  it('activates stage on Enter key', () => {
+    const onStageClick = vi.fn();
+    render(
+      <PipelineStepper stages={defaultStages} expandedStage={null} onStageClick={onStageClick} />,
+    );
+
+    const container = screen.getByRole('tablist');
+    fireEvent.keyDown(container, { key: 'Enter' });
+    expect(onStageClick).toHaveBeenCalledWith(0);
+  });
+
+  it('renders role="tab" on each stage', () => {
+    render(
+      <PipelineStepper stages={defaultStages} expandedStage={null} onStageClick={vi.fn()} />,
+    );
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs).toHaveLength(6);
+  });
+
+  it('sets aria-selected on expanded stage', () => {
+    render(
+      <PipelineStepper stages={defaultStages} expandedStage={2} onStageClick={vi.fn()} />,
+    );
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs[2]).toHaveAttribute('aria-selected', 'true');
+    expect(tabs[0]).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('renders aria-live status region', () => {
+    render(
+      <PipelineStepper stages={defaultStages} expandedStage={null} onStageClick={vi.fn()} />,
+    );
+    expect(screen.getByRole('status')).toBeInTheDocument();
+  });
+
   it('has no accessibility violations', async () => {
     const { container } = render(
       <PipelineStepper stages={defaultStages} expandedStage={null} onStageClick={vi.fn()} />,

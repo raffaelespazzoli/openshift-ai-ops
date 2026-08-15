@@ -1,5 +1,4 @@
 import { useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Button,
   DataList,
@@ -16,6 +15,8 @@ import { formatRelativeTime } from '@utils/date';
 
 interface IncidentsListProps {
   items: IncidentListItem[];
+  focusedIndex?: number;
+  onRowActivate?: (id: string, index: number) => void;
 }
 
 const SEVERITY_VARIANT: Record<IncidentSeverity, 'red' | 'orange' | 'blue'> = {
@@ -31,8 +32,7 @@ function formatState(state: string): string {
     .join(' ');
 }
 
-export function IncidentsList({ items }: IncidentsListProps) {
-  const navigate = useNavigate();
+export function IncidentsList({ items, focusedIndex = -1, onRowActivate }: IncidentsListProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const handleToggle = useCallback((_event: React.MouseEvent, id: string) => {
@@ -45,23 +45,47 @@ export function IncidentsList({ items }: IncidentsListProps) {
   }, []);
 
   const handleRowClick = useCallback(
-    (id: string) => {
-      navigate(`/incidents/${id}`);
+    (id: string, index: number) => {
+      if (onRowActivate) {
+        onRowActivate(id, index);
+      }
     },
-    [navigate],
+    [onRowActivate],
   );
 
+  const focusedId = focusedIndex >= 0 ? items[focusedIndex]?.id : undefined;
+
   return (
-    <DataList aria-label="Incidents list">
-      {items.map((item) => {
+    <DataList
+      aria-label="Incidents list"
+      aria-activedescendant={focusedId}
+    >
+      {items.map((item, index) => {
         const isExpanded = expanded.has(item.id);
+        const isFocused = focusedIndex === index;
         return (
-          <DataListItem key={item.id} id={item.id} isExpanded={isExpanded}>
+          <DataListItem
+            key={item.id}
+            id={item.id}
+            isExpanded={isExpanded}
+            aria-label={`Root-Cause Event: ${formatState(item.state)}, severity ${item.severity}, ${isExpanded ? 'expanded' : 'collapsed'}`}
+            style={
+              isFocused
+                ? {
+                    outline: '2px solid var(--pf-t--global--border--color--hover)',
+                    outlineOffset: '-2px',
+                    borderRadius: 'var(--pf-t--global--border--radius--small)',
+                  }
+                : undefined
+            }
+          >
             <DataListItemRow>
               <DataListToggle
                 id={`toggle-${item.id}`}
                 onClick={(e) => handleToggle(e, item.id)}
                 isExpanded={isExpanded}
+                aria-label={`${isExpanded ? 'Collapse' : 'Expand'} incident ${formatState(item.state)}, severity ${item.severity}`}
+                aria-controls={`content-${item.id}`}
               />
               <DataListItemCells
                 dataListCells={[
@@ -69,7 +93,7 @@ export function IncidentsList({ items }: IncidentsListProps) {
                     <Label color={SEVERITY_VARIANT[item.severity]}>{item.severity}</Label>
                   </DataListCell>,
                   <DataListCell key="state" width={2}>
-                    <Button variant="link" isInline onClick={() => handleRowClick(item.id)}>
+                    <Button variant="link" isInline onClick={() => handleRowClick(item.id, index)}>
                       {formatState(item.state)}
                     </Button>
                   </DataListCell>,

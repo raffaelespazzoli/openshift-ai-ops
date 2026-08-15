@@ -31,8 +31,9 @@ describe('ActivityChart', () => {
         isPending={false}
       />,
     );
-    const chartContainer = screen.getByLabelText(/Activity chart:/);
+    const chartContainer = screen.getByLabelText(/Line chart showing alerts/);
     expect(chartContainer).toBeInTheDocument();
+    expect(chartContainer).toHaveAttribute('role', 'img');
   });
 
   it('renders the card title', () => {

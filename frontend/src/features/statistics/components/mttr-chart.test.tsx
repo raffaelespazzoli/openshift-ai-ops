@@ -31,8 +31,9 @@ describe('MttrChart', () => {
         isPending={false}
       />,
     );
-    const chartContainer = screen.getByLabelText(/MTTR chart:/);
+    const chartContainer = screen.getByLabelText(/Area chart showing mean time to resolution/);
     expect(chartContainer).toBeInTheDocument();
+    expect(chartContainer).toHaveAttribute('role', 'img');
   });
 
   it('renders the card title', () => {
