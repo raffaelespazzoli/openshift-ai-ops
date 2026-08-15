@@ -10,9 +10,9 @@ const StatisticsPage = lazy(() => import('@features/statistics'));
 
 function PageLoader() {
   return (
-    <div aria-label="Loading page" aria-busy="true" style={{ padding: '24px' }}>
-      <Skeleton width="30%" height="28px" style={{ marginBottom: '16px' }} aria-label="Page heading loading" />
-      <Skeleton width="100%" height="300px" aria-label="Page content loading" />
+    <div role="status" aria-label="Loading page" aria-busy="true" style={{ padding: '24px' }}>
+      <Skeleton width="30%" height="28px" style={{ marginBottom: '16px' }} screenreaderText="Page heading loading" />
+      <Skeleton width="100%" height="300px" screenreaderText="Page content loading" />
     </div>
   );
 }

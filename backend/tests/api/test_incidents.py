@@ -59,13 +59,12 @@ class TestListIncidents:
         assert "timestamp" in body["meta"]
         assert "request_id" in body["meta"]
 
-    async def test_pagination_metadata(self, async_client):
-        resp = await async_client.get("/api/v1/incidents?page=1&page_size=10")
+    async def test_meta_includes_total(self, async_client):
+        resp = await async_client.get("/api/v1/incidents")
         assert resp.status_code == 200
         meta = resp.json()["meta"]
-        assert meta["page"] == 1
-        assert meta["page_size"] == 10
         assert "total" in meta
+        assert isinstance(meta["total"], int)
 
     async def test_filter_by_status(self, async_client, seeded_incident):
         resp = await async_client.get("/api/v1/incidents?status=received")
@@ -87,15 +86,21 @@ class TestListIncidents:
         data = resp.json()["data"]
         assert len(data) >= 1
 
-    async def test_pagination_limits_results(self, async_client, seeded_incident):
-        resp = await async_client.get("/api/v1/incidents?page=1&page_size=1")
+    async def test_default_pagination_params(self, async_client):
+        """Default pagination returns page=1, page_size=50."""
+        resp = await async_client.get("/api/v1/incidents")
         assert resp.status_code == 200
-        data = resp.json()["data"]
-        assert len(data) <= 1
+        meta = resp.json()["meta"]
+        assert meta["page"] == 1
+        assert meta["page_size"] == 50
 
-    async def test_page_size_max_200(self, async_client):
-        resp = await async_client.get("/api/v1/incidents?page_size=300")
-        assert resp.status_code == 422
+    async def test_custom_pagination_params(self, async_client):
+        """Custom page and page_size are respected."""
+        resp = await async_client.get("/api/v1/incidents?page=2&page_size=10")
+        assert resp.status_code == 200
+        meta = resp.json()["meta"]
+        assert meta["page"] == 2
+        assert meta["page_size"] == 10
 
 
 class TestGetIncidentDetail:

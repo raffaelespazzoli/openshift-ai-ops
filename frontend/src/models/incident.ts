@@ -17,28 +17,32 @@ export type IncidentStatus = IncidentState;
 
 export type IncidentSeverity = 'critical' | 'warning' | 'info';
 
+export interface IncidentListItem {
+  id: string;
+  state: IncidentState;
+  severity: IncidentSeverity;
+  created_at: string;
+  updated_at: string;
+  fast_path: boolean;
+}
+
+export interface IncidentFilters {
+  mode: 'firing' | 'resolved';
+  severities: IncidentSeverity[];
+  timeRange?: '1h' | '6h' | '24h' | '7d';
+  page: number;
+  pageSize: number;
+}
+
 export interface Alert {
-  id?: string;
+  id: string;
   fingerprint: string;
   labels: Record<string, string>;
   annotations: Record<string, string>;
-  starts_at?: string;
-  ends_at?: string;
   status: string;
-  fired_at?: string;
+  fired_at: string;
   resolved_at?: string | null;
-  created_at?: string;
-}
-
-export interface Incident {
-  id: string;
-  title: string;
-  status: IncidentStatus;
-  severity: IncidentSeverity;
-  root_cause_code?: string;
-  alerts: Alert[];
   created_at: string;
-  updated_at: string;
 }
 
 export interface EvidenceArtifact {

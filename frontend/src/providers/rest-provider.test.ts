@@ -27,8 +27,6 @@ describe('restProvider', () => {
             meta: {
               timestamp: '2026-08-15T10:00:00Z',
               request_id: 'req-123',
-              page: 1,
-              page_size: 20,
               total: 1,
             },
           });
@@ -53,8 +51,6 @@ describe('restProvider', () => {
             meta: {
               timestamp: '2026-08-15T10:00:00Z',
               request_id: 'req-456',
-              page: 1,
-              page_size: 20,
               total: 0,
             },
             _params: { status },

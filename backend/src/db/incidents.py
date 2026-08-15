@@ -122,8 +122,9 @@ async def list_incidents(
 ) -> tuple[list[dict], int]:
     """Query incidents with filtering and pagination.
 
-    Returns (incidents, total_count) for pagination metadata.
     The 'active' status filter maps to non-terminal pipeline states.
+    Returns ``(rows, total_count)`` where *total_count* is the number
+    of rows matching the filters before LIMIT/OFFSET are applied.
     """
     conditions: list[str] = []
     params: list = []
@@ -160,20 +161,25 @@ async def list_incidents(
         where_clause = "WHERE " + " AND ".join(conditions)
 
     count_query = f"SELECT COUNT(*) FROM incidents i {where_clause}"
-    total = await conn.fetchval(count_query, *params)
+    total: int = await conn.fetchval(count_query, *params)
 
     offset = (page - 1) * page_size
     param_idx += 1
-    limit_param = param_idx
+    limit_param = f"${param_idx}"
     param_idx += 1
-    offset_param = param_idx
+    offset_param = f"${param_idx}"
 
     data_query = f"""
         SELECT i.id, i.state, i.severity, i.created_at, i.updated_at, i.fast_path
         FROM incidents i
         {where_clause}
-        ORDER BY i.created_at DESC
-        LIMIT ${limit_param} OFFSET ${offset_param}
+        ORDER BY CASE i.severity
+            WHEN 'critical' THEN 1
+            WHEN 'warning' THEN 2
+            WHEN 'info' THEN 3
+            ELSE 4
+        END, i.created_at DESC
+        LIMIT {limit_param} OFFSET {offset_param}
     """
     rows = await conn.fetch(data_query, *params, page_size, offset)
     return [dict(r) for r in rows], total

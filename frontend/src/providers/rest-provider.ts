@@ -57,11 +57,15 @@ async function handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
 const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
 
 export const restProvider: DataProvider = {
-  async get<T>(endpoint: string, params?: Record<string, string>): Promise<ApiResponse<T>> {
+  async get<T>(endpoint: string, params?: Record<string, string | string[]>): Promise<ApiResponse<T>> {
     const url = new URL(`${baseUrl}${endpoint}`, window.location.origin);
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.set(key, value);
+        if (Array.isArray(value)) {
+          value.forEach((v) => url.searchParams.append(key, v));
+        } else {
+          url.searchParams.set(key, value);
+        }
       });
     }
     const response = await fetch(url.toString(), {
