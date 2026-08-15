@@ -243,3 +243,73 @@ class TestSummaryStatsAggregation:
         assert result["total_incidents"] == 100
         assert result["trends"]["total_incidents"] == "up"
         assert result["trends"]["mttr_seconds"] == "down"
+
+
+class TestTimeseriesDiagnosisBucketing:
+    """Regression tests: diagnoses must be bucketed by sealed_at via a
+    separate CTE that JOINs immutable_diagnoses, not derived from alerts."""
+
+    @pytest.mark.asyncio
+    async def test_sql_uses_immutable_diagnoses_and_sealed_at(self):
+        """The query must reference immutable_diagnoses and sealed_at."""
+        from src.db.statistics import get_timeseries_stats
+
+        now = datetime.now(timezone.utc)
+        mock_conn = AsyncMock()
+        mock_conn.fetch.return_value = []
+
+        await get_timeseries_stats(mock_conn, now, now, "1 hour")
+
+        mock_conn.fetch.assert_called_once()
+        sql = mock_conn.fetch.call_args[0][0]
+
+        assert "immutable_diagnoses" in sql, (
+            "Query must JOIN immutable_diagnoses for diagnosis counts"
+        )
+        assert "sealed_at" in sql, (
+            "Query must bucket diagnoses by sealed_at, not created_at"
+        )
+        assert "diagnosis_counts" in sql, (
+            "Query must use a separate diagnosis_counts CTE"
+        )
+
+    @pytest.mark.asyncio
+    async def test_diagnosis_counts_independent_of_alert_counts(self):
+        """When diagnoses are sealed at different times than incident
+        creation, the returned diagnosis list must reflect the
+        diagnosis_counts CTE — not alert_counts."""
+        from src.db.statistics import get_timeseries_stats
+
+        bucket_1 = datetime(2026, 8, 14, 0, 0, 0, tzinfo=timezone.utc)
+        bucket_2 = datetime(2026, 8, 14, 1, 0, 0, tzinfo=timezone.utc)
+        to_time = datetime(2026, 8, 14, 2, 0, 0, tzinfo=timezone.utc)
+
+        mock_conn = AsyncMock()
+        mock_conn.fetch.return_value = [
+            {
+                "bucket_start": bucket_1,
+                "alerts": 5,
+                "diagnoses": 2,
+                "resolutions": 3,
+                "mttr_seconds": 180,
+            },
+            {
+                "bucket_start": bucket_2,
+                "alerts": 3,
+                "diagnoses": 7,
+                "resolutions": 2,
+                "mttr_seconds": 240,
+            },
+        ]
+
+        result = await get_timeseries_stats(
+            mock_conn, bucket_1, to_time, "1 hour"
+        )
+
+        assert result["diagnoses"] == [2, 7], (
+            "Diagnosis counts must come from the diagnosis_counts CTE "
+            "(sealed_at bucketing), not from alert_counts"
+        )
+        assert result["alerts"] == [5, 3]
+        assert result["resolutions"] == [3, 2]
+        assert result["mttr_seconds"] == [180, 240]
