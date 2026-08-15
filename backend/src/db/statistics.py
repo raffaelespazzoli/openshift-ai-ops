@@ -1,8 +1,8 @@
 """SQL aggregation queries for statistics dashboard (Story 5.5).
 
 Provides summary metrics (card tiles) and bucketed time-series data
-for the statistics charts. Queries run against the incidents and
-approval_records tables.
+for the statistics charts. Queries run against the incidents,
+approval_records, and immutable_diagnoses tables.
 """
 
 from __future__ import annotations
@@ -156,24 +156,39 @@ async def get_timeseries_stats(
         """
         WITH buckets AS (
             SELECT generate_series($1::timestamptz, $2::timestamptz, $3::interval) AS bucket_start
+        ),
+        alert_counts AS (
+            SELECT b.bucket_start,
+                   COUNT(i.id) AS alerts,
+                   COUNT(i.id) FILTER (WHERE i.state = 'resolved') AS resolutions,
+                   COALESCE(
+                       EXTRACT(EPOCH FROM AVG(i.updated_at - i.created_at)
+                           FILTER (WHERE i.state = 'resolved')),
+                       0
+                   )::int AS mttr_seconds
+            FROM buckets b
+            LEFT JOIN incidents i
+                ON i.created_at >= b.bucket_start
+                AND i.created_at < b.bucket_start + $3::interval
+            GROUP BY b.bucket_start
+        ),
+        diagnosis_counts AS (
+            SELECT b.bucket_start, COUNT(d.id) AS diagnoses
+            FROM buckets b
+            LEFT JOIN immutable_diagnoses d
+                ON d.sealed_at >= b.bucket_start
+                AND d.sealed_at < b.bucket_start + $3::interval
+            GROUP BY b.bucket_start
         )
         SELECT
-            b.bucket_start,
-            COUNT(i.id) AS alerts,
-            COUNT(i.id) FILTER (WHERE i.state IN ('diagnosed', 'planning', 'awaiting_approval',
-                'executing', 'observing', 'resolved', 'failed')) AS diagnoses,
-            COUNT(i.id) FILTER (WHERE i.state = 'resolved') AS resolutions,
-            COALESCE(
-                EXTRACT(EPOCH FROM AVG(i.updated_at - i.created_at)
-                    FILTER (WHERE i.state = 'resolved')),
-                0
-            )::int AS mttr_seconds
-        FROM buckets b
-        LEFT JOIN incidents i
-            ON i.created_at >= b.bucket_start
-            AND i.created_at < b.bucket_start + $3::interval
-        GROUP BY b.bucket_start
-        ORDER BY b.bucket_start
+            a.bucket_start,
+            a.alerts,
+            COALESCE(dc.diagnoses, 0) AS diagnoses,
+            a.resolutions,
+            a.mttr_seconds
+        FROM alert_counts a
+        LEFT JOIN diagnosis_counts dc ON dc.bucket_start = a.bucket_start
+        ORDER BY a.bucket_start
         """,
         from_time,
         to_time,
