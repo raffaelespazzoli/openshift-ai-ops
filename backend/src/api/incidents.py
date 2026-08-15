@@ -26,6 +26,26 @@ router = APIRouter()
 logger = get_logger(Component.API)
 
 
+def _serialize_json_field(value):
+    """Return JSON-compatible data or None, converting datetimes."""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return {k: _serialize_json_field(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_serialize_json_field(item) for item in value]
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return value
+
+
+def _serialize_datetime_fields(value):
+    """Serialize a dict that may contain datetime values."""
+    if value is None:
+        return None
+    return _serialize_json_field(value)
+
+
 @router.get("/api/v1/incidents")
 async def list_incidents_endpoint(
     request: Request,
@@ -123,6 +143,14 @@ async def get_incident_detail_endpoint(
             if detail.get("fast_path_case_record_id")
             else None
         ),
+        "diagnosis": _serialize_json_field(detail.get("diagnosis")),
+        "diagnosis_attempts": [
+            _serialize_json_field(a) for a in detail.get("diagnosis_attempts", [])
+        ] or None,
+        "skeptic_verdict": _serialize_json_field(detail.get("skeptic_verdict")),
+        "remediation_plan": _serialize_json_field(detail.get("remediation_plan")),
+        "execution_log": _serialize_datetime_fields(detail.get("execution_log")),
+        "outcome": _serialize_datetime_fields(detail.get("outcome")),
     }
 
     meta = ApiMeta(request_id=request_id_var.get() or "")
