@@ -73,13 +73,8 @@ export const restProvider: DataProvider = {
     return handleResponse<T>(response);
   },
 
-  subscribe(endpoint: string, onMessage: (event: MessageEvent) => void): () => void {
-    const token = getToken();
-    const url = token
-      ? `${baseUrl}${endpoint}?token=${encodeURIComponent(token)}`
-      : `${baseUrl}${endpoint}`;
-    const eventSource = new EventSource(url);
-    eventSource.onmessage = onMessage;
-    return () => eventSource.close();
+  subscribe(_endpoint: string, _onMessage: (event: MessageEvent) => void): () => void {
+    // SSE with proper auth headers will be implemented in story 5.4
+    throw new Error('subscribe() is not implemented yet — see story 5.4');
   },
 };
