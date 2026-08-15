@@ -41,7 +41,7 @@
 # - Retrospective appends its action items to action_items; sprint-status surfaces open ones
 
 generated: 2026-08-08
-last_updated: 2026-08-14T19:55:00Z
+last_updated: 2026-08-15T18:00:00Z
 project: openshift-ai-ops
 project_key: NOKEY
 tracking_system: file-system
@@ -80,16 +80,16 @@ development_status:
   4-1-case-record-persistence-and-vector-embeddings: done
   4-2-temporal-decay-and-version-relevance: done
   4-3-fast-path-bypass-for-known-patterns: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
   # Epic 5: Operational Web UI & Approval Workflow
-  epic-5: backlog
-  5-1-frontend-scaffolding-and-app-shell: backlog
-  5-2-incidents-list-view: backlog
-  5-3-incident-detail-view-and-pipeline-visualization: backlog
-  5-4-approval-workflow-and-real-time-updates: backlog
-  5-5-statistics-dashboard: backlog
-  5-6-keyboard-shortcuts-and-accessibility: backlog
+  epic-5: in-progress
+  5-1-frontend-scaffolding-and-app-shell: ready-for-dev
+  5-2-incidents-list-view: ready-for-dev
+  5-3-incident-detail-view-and-pipeline-visualization: ready-for-dev
+  5-4-approval-workflow-and-real-time-updates: ready-for-dev
+  5-5-statistics-dashboard: ready-for-dev
+  5-6-keyboard-shortcuts-and-accessibility: ready-for-dev
   epic-5-retrospective: optional
 
   # Epic 6: LLM Configuration & Optimization
@@ -165,6 +165,22 @@ action_items:
 
   - epic: 3
     action: "Story file close-out discipline — ensure story markdown files are updated to done status with completed Dev Agent Record and Code Review Record after final review round. Prevent status drift between sprint-status.yaml and story files."
+    owner: "Dev agent"
+    status: in-progress
+
+  # Epic 4 action items (from retrospective 2026-08-15)
+  - epic: 4
+    action: "Fix all 4 pre-existing test failures (test_tools.py::test_uses_get_resource_for_named_queries, TestGetResourceLogs::test_returns_evidence_with_logs, 2x TestFreshnessGateNode) — zero failing tests before Epic 5"
+    owner: "Dev agent"
+    status: done
+
+  - epic: 4
+    action: "Build frontend development rules in project-context.md — PatternFly 6 token discipline, standalone-first + Console plugin migration path, Jest + RTL + MSW + jest-axe, provider abstraction, dark mode default, Console shell layout. Draw inspiration from dr-orchestrator project"
+    owner: "Dev agent"
+    status: done
+
+  - epic: 4
+    action: "Cross-incident re-fire detection — same-fingerprint alerts creating new incidents need fingerprint-based correlation across incidents. Post-MVP enhancement."
     owner: "Dev agent"
     status: open
 

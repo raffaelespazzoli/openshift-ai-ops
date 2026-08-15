@@ -4,7 +4,7 @@ user_name: Raffa
 date: '2026-08-06'
 sections_completed: ['technology_stack', 'language_specific_rules', 'framework_specific_rules', 'testing_rules', 'code_quality_style', 'development_workflow', 'critical_dont_miss']
 status: complete
-rule_count: 100
+rule_count: 122
 optimized_for_llm: true
 ---
 
@@ -60,6 +60,12 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **No custom components** — use PatternFly React components exclusively. No wrapping PF components in project-specific abstractions in v1.
 - **PatternFly design tokens only** — never use raw hex/rgb colors. Reference `--pf-t--global--*` CSS custom properties. Dark mode is handled entirely by PF's theme toggle.
 - **API envelope assumption** — all REST responses follow `{data: T, meta: {timestamp, request_id}}`. Frontend types must match this envelope.
+- **Provider abstraction pattern** — define a `DataProvider` interface in `providers/` that currently uses REST + SSE fetch. The interface MUST be swappable for Console SDK hooks (`useK8sWatchResource`) when migrating to an OCP Console plugin.
+- **State management: TanStack Query for server state** — all API data managed by TanStack Query (React Query). React context only for cross-cutting concerns (theme, auth). No Redux, no Zustand, no module-level state stores.
+- **SSE connection management** — reconnect with exponential backoff (initial 1s, max 30s, jitter). One shared `EventSource` per endpoint. Close on component unmount. SSE events invalidate TanStack Query cache.
+- **Error boundary on every route** — wrap each route component in a React error boundary. Fallback renders PatternFly `EmptyState` with danger icon and "Reload" action. Never crash the entire app shell.
+- **URL state for filters and sorting** — persist filter, sort, and pagination state in URL query params. Views must be shareable via URL. Use `URLSearchParams` — no custom serialization.
+- **Date formatting** — relative time for recent events (< 24h) using `Intl.RelativeTimeFormat` or `date-fns/formatDistanceToNow`. Absolute ISO 8601 for older events. No moment.js.
 
 #### Shared (Both Languages)
 
@@ -94,6 +100,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **DataList for incident lists** — expandable rows for alert grouping under Root-Cause Events.
 - **Dark mode as default** — SREs work at 2am. Support both themes via PF toggle, but default to dark.
 - **No animations or pulsing** — clinical calm. No urgency theatrics. The data speaks.
+- **Loading states: PatternFly Skeleton** — use `Skeleton` components matching the layout shape (e.g., `SkeletonTable`, inline skeletons for text). Never a standalone spinner without surrounding layout context.
+- **Empty states: PatternFly EmptyState** — every data view has an `EmptyState` with appropriate icon (`SearchIcon` for no results, `CubesIcon` for no data) and a single primary action.
+- **Error states: PatternFly EmptyState with danger** — render `EmptyState` with `ExclamationCircleIcon` (danger color) + descriptive message + "Retry" button. Never show raw error text or stack traces.
+- **Responsive breakpoints** — desktop-first design (SREs on workstations). Minimum supported viewport is 1024px. PatternFly grid breakpoints (`xl`, `lg`) only — no custom media queries.
+- **Keyboard shortcuts** — single-letter shortcuts for list navigation (`j`/`k` for next/previous), global shortcuts for navigation (`g` then `i` for incidents, `g` then `s` for statistics). Shortcuts disabled when focus is in an input/textarea.
 
 ### Testing Rules
 
@@ -113,6 +124,12 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **React Testing Library** — test user behavior, not implementation details. Query by role, label, text — never by CSS class or test-id unless no accessible alternative exists.
 - **Mock API responses** — use MSW (Mock Service Worker) or equivalent to intercept REST/SSE at the network level. Never mock `fetch` directly.
 - **PatternFly component usage is NOT tested** — don't assert that a specific PF component is rendered. Assert visible text, accessible roles, and user interactions.
+- **jest-axe on every component test** — every test file includes `expect(await axe(container)).toHaveNoViolations()`. Accessibility regressions fail CI. No exceptions.
+- **MSW handlers centralized** — define all mock API handlers in `frontend/src/mocks/handlers.ts`. Reuse across unit and integration tests. Per-test overrides via `server.use()` for error scenarios.
+- **SSE testing via MSW or mock EventSource** — test SSE-driven components with MSW interceptors or a custom `MockEventSource` helper. Never mock the `EventSource` constructor directly — test the integration.
+- **Snapshot tests: FORBIDDEN** — per shared principle. Test behavior and accessible roles, not rendered output. Jest snapshots break on PF upgrades and provide false confidence.
+- **Integration test pattern** — render the full route (with providers + router context), verify data fetched via MSW handlers, interact with the UI via RTL queries, assert final state. No shallow rendering.
+- **Test IDs as last resort only** — `data-testid` is permitted ONLY when no accessible alternative exists (no role, label, or text to query). Prefer `getByRole`, `getByLabelText`, `getByText`.
 
 #### Integration Test Strategy
 
@@ -155,6 +172,23 @@ Five test layers, each with its own infrastructure and trigger:
   ```
 - **`models/` is the contract** — all stage-boundary artifacts defined here. Every other module imports from it. It imports from nothing.
 - **`agents/` is encapsulated** — never imported by `api/` or `pipeline/` directly. Pipeline stages invoke agents through the graph definition, not direct import.
+- **Frontend module layout** — `frontend/src/` follows feature-based organization:
+  ```
+  frontend/src/
+    app/                    # App shell, routing, providers
+    components/             # Shared PatternFly-based components
+    features/               # Feature modules (incidents/, statistics/, approval/)
+      incidents/
+        components/         # Feature-specific components
+        hooks/              # Feature-specific hooks
+      statistics/
+      approval/
+    hooks/                  # Shared hooks (useSSE, useApiClient, etc.)
+    providers/              # DataProvider interface + REST implementation
+    models/                 # TypeScript types matching API envelope
+    mocks/                  # MSW handlers for testing
+    utils/                  # Pure utility functions
+  ```
 
 #### Naming Conventions
 
@@ -214,6 +248,13 @@ Five test layers, each with its own infrastructure and trigger:
 - **Frontend** — npm/pnpm workspace. Vite or similar for dev server with HMR.
 - **Database** — local PostgreSQL 18 + pgvector via container (podman/docker).
 - **MCP Servers** — mock or local instances for development. Never connect dev to a production cluster.
+
+### Frontend Architecture Decisions
+
+- **FA-1: Standalone-first, Console-ready** — the app is a standalone SPA served by nginx. Architecture MUST support future migration to OCP Console plugin. The `providers/` abstraction is the migration seam — swap the REST/SSE provider for a Console SDK provider (`useK8sWatchResource`). No Console SDK dependency in v1.
+- **FA-2: Server state via TanStack Query** — all API data managed by TanStack Query. Handles caching, background refetching, optimistic updates, and SSE-triggered cache invalidation. No manual `useState` + `useEffect` fetch patterns. Query keys follow `[resource, ...params]` convention.
+- **FA-3: SSE for real-time** — subscribe to `/api/v1/events/incidents/{id}` for detail views and `/api/v1/events/incidents` for list polling. Falls back to TanStack Query refetch interval (30s) on connection drop. SSE events call `queryClient.invalidateQueries()` for automatic re-render.
+- **FA-4: Feature-based code splitting** — each feature module (`incidents`, `statistics`, `approval`) is lazily loaded via `React.lazy()`. App shell, shared components, and providers are in the main bundle. Route-level splitting only — no component-level lazy loading.
 
 ### Critical Don't-Miss Rules
 
@@ -286,4 +327,4 @@ Five test layers, each with its own infrastructure and trigger:
 - Review quarterly for outdated rules
 - Remove rules that become obvious over time as the codebase matures
 
-Last Updated: 2026-08-06
+Last Updated: 2026-08-15
