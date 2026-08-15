@@ -63,7 +63,7 @@ export function ApprovalActions({ incidentId, planSummary }: ApprovalActionsProp
       isLoading={approveMutation.isPending}
       isDisabled={approveMutation.isPending || reviewTimeRemaining != null}
       aria-label="Approve remediation plan"
-      aria-describedby={planSummary ? 'plan-summary-ref' : undefined}
+      aria-describedby={planSummary ? `plan-summary-${incidentId}` : undefined}
     >
       Approve
     </Button>
@@ -90,7 +90,7 @@ export function ApprovalActions({ incidentId, planSummary }: ApprovalActionsProp
             onClick={handleOpenRejectModal}
             isDisabled={approveMutation.isPending || rejectMutation.isPending}
             aria-label="Reject remediation plan"
-            aria-describedby={planSummary ? 'plan-summary-ref' : undefined}
+            aria-describedby={planSummary ? `plan-summary-${incidentId}` : undefined}
           >
             Reject
           </Button>
@@ -98,7 +98,7 @@ export function ApprovalActions({ incidentId, planSummary }: ApprovalActionsProp
       </Split>
 
       {planSummary && (
-        <span id="plan-summary-ref" hidden>
+        <span id={`plan-summary-${incidentId}`} hidden>
           {planSummary}
         </span>
       )}
@@ -157,7 +157,7 @@ export function ApprovalActions({ incidentId, planSummary }: ApprovalActionsProp
           <Button
             variant="danger"
             onClick={handleReject}
-            isDisabled={!rejectReason.trim()}
+            isDisabled={!rejectReason.trim() || rejectMutation.isPending}
             isLoading={rejectMutation.isPending}
           >
             Reject

@@ -26,8 +26,13 @@ export function useApproveIncident(incidentId: string) {
         },
       });
       if (!response.ok) {
-        const error: ApproveError = await response.json();
-        throw error;
+        let errorBody: ApproveError = { error: `Request failed with status ${response.status}`, code: 'UNKNOWN' };
+        try {
+          errorBody = await response.json();
+        } catch {
+          // Non-JSON response (e.g., proxy error)
+        }
+        throw errorBody;
       }
       return response.json();
     },

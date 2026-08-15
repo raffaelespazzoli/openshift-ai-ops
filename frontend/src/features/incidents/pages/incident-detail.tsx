@@ -34,21 +34,19 @@ export default function IncidentDetailPage() {
   const returnSearch = (location.state as { returnSearch?: string } | null)?.returnSearch ?? '';
 
   const { connectionState } = useIncidentSSE({ incidentId: id, enabled: !!id });
-  const isSSEDisconnected = connectionState === 'disconnected';
-
-  const [isTerminal, setIsTerminal] = useState(false);
-
-  const shouldPoll = isSSEDisconnected && !isTerminal;
+  const isSSEUnavailable = connectionState === 'disconnected' || connectionState === 'reconnecting';
 
   const { data: incident, isPending, error, refetch } = useIncidentDetail(id!, {
-    refetchInterval: shouldPoll ? 5000 : false,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!isSSEUnavailable) return false;
+      if (data && TERMINAL_STATES.has(data.state)) return false;
+      return 5000;
+    },
   });
 
-  useEffect(() => {
-    if (incident) {
-      setIsTerminal(TERMINAL_STATES.has(incident.state));
-    }
-  }, [incident]);
+  const isTerminal = incident ? TERMINAL_STATES.has(incident.state) : false;
+  const shouldPoll = isSSEUnavailable && !isTerminal;
 
   const stages = useMemo(() => (incident ? getStageStates(incident) : []), [incident]);
 

@@ -27,8 +27,13 @@ export function useRejectIncident(incidentId: string) {
         body: JSON.stringify({ reason }),
       });
       if (!response.ok) {
-        const error: RejectError = await response.json();
-        throw error;
+        let errorBody: RejectError = { error: `Request failed with status ${response.status}`, code: 'UNKNOWN' };
+        try {
+          errorBody = await response.json();
+        } catch {
+          // Non-JSON response (e.g., proxy error)
+        }
+        throw errorBody;
       }
       return response.json();
     },

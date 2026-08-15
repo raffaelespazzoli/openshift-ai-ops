@@ -5,3 +5,8 @@
 ## Deferred from: code review of 4-1-case-record-persistence-and-vector-embeddings (2026-08-14)
 
 - Duplicate case record creation block in `execution_dispatcher.py` — identical try/except blocks in `_run_execution_cycle()` and `_run_recovery_observation()` could be extracted to a shared helper function. Pre-existing pattern, low priority.
+
+## Deferred from: code review of 5-4-approval-workflow-and-real-time-updates (2026-08-15)
+
+- No 401 differentiation in SSE reconnect (`use-sse.ts:74-75`) — SSE reconnect treats 401 the same as other errors, causing infinite backoff retries on expired tokens. Auth interceptor is an app-level concern beyond story 5.4's scope.
+- No optimistic update on Approve/Reject (`use-approve-incident.ts`, `use-reject-incident.ts`) — Task 1.4 mentions "optimistic UI transition" but cache invalidation is functionally correct. Optimistic updates add complexity for marginal UX gain.

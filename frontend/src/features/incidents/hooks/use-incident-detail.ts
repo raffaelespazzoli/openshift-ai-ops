@@ -1,9 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type Query } from '@tanstack/react-query';
 import type { IncidentDetail } from '@models/incident';
 import type { ApiResponse } from '@models/api';
 
 interface UseIncidentDetailOptions {
-  refetchInterval?: number | false;
+  refetchInterval?: number | false | ((query: Query<IncidentDetail>) => number | false);
 }
 
 export function useIncidentDetail(id: string, options?: UseIncidentDetailOptions) {

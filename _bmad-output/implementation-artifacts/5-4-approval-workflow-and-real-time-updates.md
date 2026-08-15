@@ -407,21 +407,18 @@ Alternatively, implement a minimal 50-line SSE reader using `fetch` + `ReadableS
 
 ## Code Review Record
 
-### Review Model Used
+### Review Round 1 — 2026-08-15
+**Review model:** Claude Opus 4.6
+**Fix model:** _(to be filled when fixes are applied)_
 
-_(To be filled after review — must differ from dev model)_
-
-### Review Findings
-
-_(To be filled after review)_
-
-### Decisions Needed / Decisions Taken
-
-_(To be filled after review)_
-
-### Fixes Applied
-
-_(To be filled after review)_
+#### Findings
+- [ ] [Review][Patch] SSE `reconnecting` state prevents polling fallback [`use-sse.ts:118`, `incident-detail.tsx:41`] — HIGH: When SSE disconnects, hook transitions to `reconnecting` (not `disconnected`) and retries forever with backoff. The polling fallback checks `connectionState === 'disconnected'`, so polling and the "Live updates paused" indicator never activate during reconnection. User gets neither SSE nor polling during this window. Violates AC #7.
+- [ ] [Review][Patch] Modal Reject button not disabled during pending mutation [`approval-actions.tsx:160`] — MEDIUM: `isDisabled={!rejectReason.trim()}` does not check `rejectMutation.isPending`. Double-click sends duplicate requests; backend returns 409 on second attempt, showing an error flash. Compare to Approve button which correctly checks `approveMutation.isPending`.
+- [ ] [Review][Patch] Non-JSON error response unhandled in mutation hooks [`use-approve-incident.ts:29`, `use-reject-incident.ts:30`] — LOW: If server returns non-JSON (e.g., 502 proxy error), `response.json()` throws SyntaxError instead of a typed error object. Error display degrades to generic fallback via `??` operator, but diagnostic info is lost.
+- [ ] [Review][Patch] `isTerminal` uses useState + useEffect instead of derived state [`incident-detail.tsx:39-51`] — LOW: Classic derived-state anti-pattern. Replace with `const isTerminal = incident ? TERMINAL_STATES.has(incident.state) : false;` to eliminate the extra render cycle and state/effect overhead.
+- [ ] [Review][Patch] Static `plan-summary-ref` DOM ID not unique [`approval-actions.tsx:101`] — LOW: `id="plan-summary-ref"` is a static DOM ID used for `aria-describedby`. Should include `incidentId` to ensure uniqueness if multiple instances ever render.
+- [x] [Review][Defer] No 401 differentiation in SSE reconnect [`use-sse.ts:74-75`] — deferred, auth interceptor is an app-level concern beyond this story's scope. SSE reconnect treats 401 the same as other errors, causing infinite backoff retries on expired tokens.
+- [x] [Review][Defer] No optimistic update on Approve/Reject [`use-approve-incident.ts`, `use-reject-incident.ts`] — deferred, UX polish. Task 1.4 mentions "optimistic UI transition" but cache invalidation is functionally correct and fast enough. Optimistic updates add complexity for marginal UX gain.
 
 ## Dev Agent Record
 
