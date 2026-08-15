@@ -7,8 +7,6 @@ export const handlers = [
       meta: {
         timestamp: new Date().toISOString(),
         request_id: 'mock-request-id-001',
-        page: 1,
-        page_size: 20,
         total: 0,
       },
     });

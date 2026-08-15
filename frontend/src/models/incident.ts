@@ -4,6 +4,7 @@ export type IncidentStatus =
   | 'queued'
   | 'diagnosing'
   | 'diagnosed'
+  | 'planning'
   | 'awaiting_approval'
   | 'executing'
   | 'observing'

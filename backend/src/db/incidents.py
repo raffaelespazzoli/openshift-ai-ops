@@ -110,6 +110,9 @@ _ACTIVE_STATES = (
 )
 
 
+_LIST_SAFETY_LIMIT = 1000
+
+
 async def list_incidents(
     conn: asyncpg.Connection | asyncpg.Pool,
     *,
@@ -117,12 +120,11 @@ async def list_incidents(
     severities: list[str] | None = None,
     from_time: datetime | None = None,
     to_time: datetime | None = None,
-    page: int = 1,
-    page_size: int = 50,
-) -> tuple[list[dict], int]:
-    """Query incidents with filtering and pagination.
+) -> list[dict]:
+    """Query incidents with filtering, returning all matching rows.
 
-    Returns (incidents, total_count) for pagination metadata.
+    No pagination — v1 UX renders the full list with scroll.
+    A safety limit of 1000 rows prevents unbounded result sets.
     The 'active' status filter maps to non-terminal pipeline states.
     """
     conditions: list[str] = []
@@ -159,24 +161,15 @@ async def list_incidents(
     if conditions:
         where_clause = "WHERE " + " AND ".join(conditions)
 
-    count_query = f"SELECT COUNT(*) FROM incidents i {where_clause}"
-    total = await conn.fetchval(count_query, *params)
-
-    offset = (page - 1) * page_size
-    param_idx += 1
-    limit_param = param_idx
-    param_idx += 1
-    offset_param = param_idx
-
     data_query = f"""
         SELECT i.id, i.state, i.severity, i.created_at, i.updated_at, i.fast_path
         FROM incidents i
         {where_clause}
         ORDER BY i.created_at DESC
-        LIMIT ${limit_param} OFFSET ${offset_param}
+        LIMIT {_LIST_SAFETY_LIMIT}
     """
-    rows = await conn.fetch(data_query, *params, page_size, offset)
-    return [dict(r) for r in rows], total
+    rows = await conn.fetch(data_query, *params)
+    return [dict(r) for r in rows]
 
 
 async def get_incident_detail(
