@@ -4,7 +4,7 @@ baseline_commit: ba92badbb389f9b8e9528305597783be08772566
 
 # Story 5.1: Frontend Scaffolding & App Shell
 
-Status: review
+Status: done
 
 ## Story
 
