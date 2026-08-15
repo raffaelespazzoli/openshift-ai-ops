@@ -2,7 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import type { IncidentDetail } from '@models/incident';
 import type { ApiResponse } from '@models/api';
 
-export function useIncidentDetail(id: string) {
+interface UseIncidentDetailOptions {
+  refetchInterval?: number | false;
+}
+
+export function useIncidentDetail(id: string, options?: UseIncidentDetailOptions) {
   return useQuery({
     queryKey: ['incidents', id],
     queryFn: async (): Promise<IncidentDetail> => {
@@ -23,5 +27,6 @@ export function useIncidentDetail(id: string) {
       return envelope.data;
     },
     staleTime: 30_000,
+    refetchInterval: options?.refetchInterval,
   });
 }

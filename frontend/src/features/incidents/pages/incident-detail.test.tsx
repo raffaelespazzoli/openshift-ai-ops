@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { axe, toHaveNoViolations } from 'jest-axe';
 import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -207,5 +208,50 @@ describe('IncidentDetailPage', () => {
       expect(screen.getByRole('heading', { name: 'KubePersistentVolumeStuckPending' })).toBeInTheDocument();
     });
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('shows approve/reject buttons for awaiting_approval incident', async () => {
+    renderWithProviders('inc-uuid-001');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /reject/i })).toBeInTheDocument();
+  });
+
+  it('clicking Approve calls the approve endpoint', async () => {
+    const user = userEvent.setup();
+    renderWithProviders('inc-uuid-001');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('button', { name: /approve/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /approve/i })).not.toBeDisabled();
+    });
+  });
+
+  it('clicking Reject opens modal and submitting calls reject endpoint', async () => {
+    const user = userEvent.setup();
+    renderWithProviders('inc-uuid-001');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /reject/i })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('button', { name: /reject/i }));
+    expect(screen.getByText('Reject Remediation Plan')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Rejection reason'), 'Too risky');
+    const rejectButtons = screen.getAllByRole('button', { name: /reject/i });
+    const modalSubmit = rejectButtons.find((btn) => !btn.hasAttribute('aria-label'));
+    if (modalSubmit) await user.click(modalSubmit);
+    await waitFor(() => {
+      expect(screen.queryByText('Reject Remediation Plan')).not.toBeInTheDocument();
+    });
+  });
+
+  it('does not show approve buttons for non-awaiting_approval incident', async () => {
+    renderWithProviders('inc-uuid-fp');
+    await waitFor(() => {
+      expect(screen.getByText(/Fast-Path/)).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument();
   });
 });

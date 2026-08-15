@@ -15,6 +15,7 @@ import {
 import { ExclamationCircleIcon } from '@patternfly/react-icons';
 import SearchIcon from '@patternfly/react-icons/dist/esm/icons/search-icon';
 import { useIncidentDetail } from '../hooks/use-incident-detail';
+import { useIncidentSSE } from '../hooks/use-incident-sse';
 import { getStageStates } from '@utils/pipeline-stages';
 import { PipelineStepper } from '../components/pipeline-stepper';
 import { StagePanel } from '../components/stage-panel';
@@ -25,12 +26,29 @@ import { RemediationPanel } from '../components/remediation-panel';
 import { ExecutionPanel } from '../components/execution-panel';
 import { OutcomePanel } from '../components/outcome-panel';
 
+const TERMINAL_STATES = new Set(['resolved', 'failed', 'cancelled']);
+
 export default function IncidentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
   const returnSearch = (location.state as { returnSearch?: string } | null)?.returnSearch ?? '';
 
-  const { data: incident, isPending, error, refetch } = useIncidentDetail(id!);
+  const { connectionState } = useIncidentSSE({ incidentId: id, enabled: !!id });
+  const isSSEDisconnected = connectionState === 'disconnected';
+
+  const [isTerminal, setIsTerminal] = useState(false);
+
+  const shouldPoll = isSSEDisconnected && !isTerminal;
+
+  const { data: incident, isPending, error, refetch } = useIncidentDetail(id!, {
+    refetchInterval: shouldPoll ? 5000 : false,
+  });
+
+  useEffect(() => {
+    if (incident) {
+      setIsTerminal(TERMINAL_STATES.has(incident.state));
+    }
+  }, [incident]);
 
   const stages = useMemo(() => (incident ? getStageStates(incident) : []), [incident]);
 
@@ -44,12 +62,9 @@ export default function IncidentDetailPage() {
     if (activeIndex !== -1) setExpandedStage(activeIndex);
   }, [stages]);
 
-  const handleStageClick = useCallback(
-    (index: number) => {
-      setExpandedStage((prev) => (prev === index ? null : index));
-    },
-    [],
-  );
+  const handleStageClick = useCallback((index: number) => {
+    setExpandedStage((prev) => (prev === index ? null : index));
+  }, []);
 
   if (isPending) {
     return (
@@ -132,6 +147,11 @@ export default function IncidentDetailPage() {
               : ''}
           </Label>
         )}
+        {shouldPoll && (
+          <Label isCompact variant="outline" role="status" aria-live="polite">
+            Live updates paused
+          </Label>
+        )}
       </div>
 
       <div style={{ marginBottom: 'var(--pf-t--global--spacer--lg)' }}>
@@ -152,7 +172,13 @@ export default function IncidentDetailPage() {
           {stage.id === 'triage' && <TriagePanel incident={incident} />}
           {stage.id === 'diagnosis' && <DiagnosisPanel incident={incident} />}
           {stage.id === 'skeptic' && <SkepticPanel data={incident.skeptic_verdict} />}
-          {stage.id === 'remediation' && <RemediationPanel data={incident.remediation_plan} />}
+          {stage.id === 'remediation' && (
+            <RemediationPanel
+              data={incident.remediation_plan}
+              incidentId={incident.id}
+              incidentState={incident.state}
+            />
+          )}
           {stage.id === 'execution' && (
             <ExecutionPanel
               data={incident.execution_log}

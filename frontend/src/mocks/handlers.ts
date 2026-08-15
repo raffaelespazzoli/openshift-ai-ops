@@ -282,6 +282,65 @@ export const handlers = [
     });
   }),
 
+  http.get('/api/v1/incidents/awaiting-approval', () => {
+    return HttpResponse.json({
+      data: [
+        {
+          id: 'inc-uuid-001',
+          state: 'awaiting_approval',
+          severity: 'warning',
+          blast_radius: 'namespace',
+          created_at: '2026-08-15T02:07:00Z',
+          updated_at: '2026-08-15T02:10:42Z',
+        },
+        {
+          id: 'inc-uuid-002',
+          state: 'awaiting_approval',
+          severity: 'critical',
+          blast_radius: 'node',
+          created_at: '2026-08-15T01:00:00Z',
+          updated_at: '2026-08-15T01:05:00Z',
+        },
+      ],
+      meta: {
+        total: 2,
+        timestamp: new Date().toISOString(),
+        request_id: 'mock-request-id-awaiting',
+      },
+    });
+  }),
+
+  http.post('/api/v1/incidents/:id/approve', () => {
+    return HttpResponse.json({
+      data: { status: 'approved', new_state: 'executing' },
+      meta: {
+        timestamp: new Date().toISOString(),
+        request_id: 'mock-request-id-approve',
+      },
+    });
+  }),
+
+  http.post('/api/v1/incidents/:id/reject', async ({ request }) => {
+    const body = (await request.json()) as { reason?: string };
+    if (!body.reason?.trim()) {
+      return HttpResponse.json(
+        {
+          error: 'Reason is required',
+          code: 'VALIDATION_ERROR',
+          detail: {},
+        },
+        { status: 400 },
+      );
+    }
+    return HttpResponse.json({
+      data: { status: 'rejected', new_state: 'failed' },
+      meta: {
+        timestamp: new Date().toISOString(),
+        request_id: 'mock-request-id-reject',
+      },
+    });
+  }),
+
   http.get('/api/v1/incidents/:id', ({ params }) => {
     const id = params['id'] as string;
 
@@ -373,6 +432,17 @@ export const handlers = [
         timestamp: new Date().toISOString(),
         request_id: 'mock-request-id-stats-ts',
       },
+    });
+  }),
+
+  http.get('/api/v1/events/stream', () => {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(': keepalive\n\n'));
+      },
+    });
+    return new HttpResponse(stream, {
+      headers: { 'Content-Type': 'text/event-stream' },
     });
   }),
 

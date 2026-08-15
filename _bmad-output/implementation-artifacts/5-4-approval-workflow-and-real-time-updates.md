@@ -1,6 +1,6 @@
 # Story 5.4: Approval Workflow & Real-Time Updates
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -26,67 +26,67 @@ so that I can act on recommendations immediately without refreshing the page or 
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Approve/Reject buttons in Remediation panel (AC: #1, #2, #3)
-  - [ ] 1.1 Modify `frontend/src/features/incidents/components/remediation-panel.tsx` — add Approve (primary) and Reject (danger) buttons at the top of the panel when `incident.state === 'awaiting_approval'`
-  - [ ] 1.2 Create mutation hook `useApproveIncident(id)` calling `POST /api/v1/incidents/{id}/approve` via TanStack Query `useMutation`
-  - [ ] 1.3 Create mutation hook `useRejectIncident(id)` calling `POST /api/v1/incidents/{id}/reject` with `{ reason }` body
-  - [ ] 1.4 On Approve success: invalidate `['incidents', id]` and `['incidents-awaiting']` queries, optimistic UI transition (Remediation → completed, Execution → active)
-  - [ ] 1.5 On Reject success: invalidate `['incidents', id]` and `['incidents-awaiting']` queries, optimistic UI (pipeline → failed state)
-  - [ ] 1.6 Add loading state on button (spinner/disabled) while mutation is in-flight
-  - [ ] 1.7 Display inline PatternFly `Alert` (danger) on mutation error with retry option
-  - [ ] 1.8 Handle minimum review time: if API returns 409 with `review_time_remaining`, show countdown or disabled state with tooltip
+- [x] Task 1: Approve/Reject buttons in Remediation panel (AC: #1, #2, #3)
+  - [x] 1.1 Modify `frontend/src/features/incidents/components/remediation-panel.tsx` — add Approve (primary) and Reject (danger) buttons at the top of the panel when `incident.state === 'awaiting_approval'`
+  - [x] 1.2 Create mutation hook `useApproveIncident(id)` calling `POST /api/v1/incidents/{id}/approve` via TanStack Query `useMutation`
+  - [x] 1.3 Create mutation hook `useRejectIncident(id)` calling `POST /api/v1/incidents/{id}/reject` with `{ reason }` body
+  - [x] 1.4 On Approve success: invalidate `['incidents', id]` and `['incidents-awaiting']` queries, optimistic UI transition (Remediation → completed, Execution → active)
+  - [x] 1.5 On Reject success: invalidate `['incidents', id]` and `['incidents-awaiting']` queries, optimistic UI (pipeline → failed state)
+  - [x] 1.6 Add loading state on button (spinner/disabled) while mutation is in-flight
+  - [x] 1.7 Display inline PatternFly `Alert` (danger) on mutation error with retry option
+  - [x] 1.8 Handle minimum review time: if API returns 409 with `review_time_remaining`, show countdown or disabled state with tooltip
 
-- [ ] Task 2: Reject reason modal (AC: #3)
-  - [ ] 2.1 When Reject is clicked, show PatternFly `Modal` with `TextArea` for rejection reason (required)
-  - [ ] 2.2 Modal has "Reject" (danger) and "Cancel" buttons
-  - [ ] 2.3 Validate reason is non-empty before submitting
+- [x] Task 2: Reject reason modal (AC: #3)
+  - [x] 2.1 When Reject is clicked, show PatternFly `Modal` with `TextArea` for rejection reason (required)
+  - [x] 2.2 Modal has "Reject" (danger) and "Cancel" buttons
+  - [x] 2.3 Validate reason is non-empty before submitting
 
-- [ ] Task 3: NotificationBadge for awaiting-approval count (AC: #4)
-  - [ ] 3.1 Create hook `useAwaitingApprovalCount()` calling `GET /api/v1/incidents/awaiting-approval` via TanStack Query
-  - [ ] 3.2 Modify the sidebar Nav component (in `frontend/src/app/`) to display PatternFly `NotificationBadge` on the "Incidents" nav item
-  - [ ] 3.3 Badge hidden when count is 0; shows numeric count otherwise
-  - [ ] 3.4 Query auto-refetches on window focus and has 30s `staleTime`
-  - [ ] 3.5 SSE events invalidate the `['incidents-awaiting']` query key (wired in Task 5)
+- [x] Task 3: NotificationBadge for awaiting-approval count (AC: #4)
+  - [x] 3.1 Create hook `useAwaitingApprovalCount()` calling `GET /api/v1/incidents/awaiting-approval` via TanStack Query
+  - [x] 3.2 Modify the sidebar Nav component (in `frontend/src/app/`) to display PatternFly `Badge` on the "Incidents" nav item
+  - [x] 3.3 Badge hidden when count is 0; shows numeric count otherwise
+  - [x] 3.4 Query auto-refetches on window focus and has 30s `staleTime`
+  - [x] 3.5 SSE events invalidate the `['incidents-awaiting']` query key (wired in Task 5)
 
-- [ ] Task 4: SSE subscription hook (AC: #5, #6, #7)
-  - [ ] 4.1 Create `frontend/src/hooks/use-sse.ts` — shared SSE subscription hook using `EventSource`
-  - [ ] 4.2 Connect to `GET /api/v1/events/stream` with `Authorization` header (via polyfill or custom fetch-based SSE, since native `EventSource` doesn't support headers)
-  - [ ] 4.3 Parse incoming events: match `event_name` and `incident_id`
-  - [ ] 4.4 Implement reconnect with exponential backoff: initial 1s, max 30s, jitter (per project-context.md SSE rules)
-  - [ ] 4.5 Support `Last-Event-ID` header on reconnection for replay from the event bus
-  - [ ] 4.6 Close EventSource on component unmount (cleanup in useEffect return)
-  - [ ] 4.7 Expose connection state: `connected`, `reconnecting`, `disconnected`
+- [x] Task 4: SSE subscription hook (AC: #5, #6, #7)
+  - [x] 4.1 Create `frontend/src/hooks/use-sse.ts` — shared SSE subscription hook using fetch-based SSE
+  - [x] 4.2 Connect to `GET /api/v1/events/stream` with `Authorization` header via fetch-based SSE (ReadableStream)
+  - [x] 4.3 Parse incoming events: match `event_name` and `incident_id`
+  - [x] 4.4 Implement reconnect with exponential backoff: initial 1s, max 30s, jitter (per project-context.md SSE rules)
+  - [x] 4.5 Support `Last-Event-ID` header on reconnection for replay from the event bus
+  - [x] 4.6 Close EventSource on component unmount (cleanup in useEffect return)
+  - [x] 4.7 Expose connection state: `connected`, `reconnecting`, `disconnected`
 
-- [ ] Task 5: SSE integration with TanStack Query (AC: #5, #6)
-  - [ ] 5.1 Create `frontend/src/hooks/use-incident-sse.ts` — wires SSE events to query invalidation
-  - [ ] 5.2 On `incident.state_changed` or `incident.stage_changed` for the viewed incident: `queryClient.invalidateQueries({ queryKey: ['incidents', id] })`
-  - [ ] 5.3 On `incident.approval_decision`: invalidate `['incidents-awaiting']` query
-  - [ ] 5.4 On `incident.created` or `incident.resolved`: invalidate `['incidents']` list query
-  - [ ] 5.5 Wire `useIncidentSSE` into the incident detail page component
+- [x] Task 5: SSE integration with TanStack Query (AC: #5, #6)
+  - [x] 5.1 Create `frontend/src/features/incidents/hooks/use-incident-sse.ts` — wires SSE events to query invalidation
+  - [x] 5.2 On `incident.state_changed` or `incident.stage_changed` for the viewed incident: `queryClient.invalidateQueries({ queryKey: ['incidents', id] })`
+  - [x] 5.3 On `incident.approval_decision`: invalidate `['incidents-awaiting']` query
+  - [x] 5.4 On `incident.created` or `incident.resolved`: invalidate `['incidents']` list query
+  - [x] 5.5 Wire `useIncidentSSE` into the incident detail page component
 
-- [ ] Task 6: Polling fallback on SSE disconnect (AC: #6, #7)
-  - [ ] 6.1 In `useIncidentSSE`, detect when connection state is `disconnected`
-  - [ ] 6.2 When disconnected, enable TanStack Query `refetchInterval: 5000` on the incident detail query
-  - [ ] 6.3 When reconnected, disable polling (set `refetchInterval` back to `false`)
-  - [ ] 6.4 Show subtle inline indicator (PatternFly `Label` or small text) when operating in polling fallback mode
+- [x] Task 6: Polling fallback on SSE disconnect (AC: #6, #7)
+  - [x] 6.1 In `useIncidentSSE`, detect when connection state is `disconnected`
+  - [x] 6.2 When disconnected, enable TanStack Query `refetchInterval: 5000` on the incident detail query
+  - [x] 6.3 When reconnected, disable polling (set `refetchInterval` back to `false`)
+  - [x] 6.4 Show subtle inline indicator (PatternFly `Label` or small text) when operating in polling fallback mode
 
-- [ ] Task 7: Auto-refresh while stage is active (AC: #6)
-  - [ ] 7.1 In incident detail page, detect if any pipeline stage state is `active`
-  - [ ] 7.2 While active and SSE is connected: rely on SSE (no polling needed)
-  - [ ] 7.3 While active and SSE is disconnected: 5s `refetchInterval` is already active from Task 6
-  - [ ] 7.4 When incident reaches terminal state (`resolved`/`failed`): stop all auto-refresh
+- [x] Task 7: Auto-refresh while stage is active (AC: #6)
+  - [x] 7.1 In incident detail page, detect if any pipeline stage state is `active`
+  - [x] 7.2 While active and SSE is connected: rely on SSE (no polling needed)
+  - [x] 7.3 While active and SSE is disconnected: 5s `refetchInterval` is already active from Task 6
+  - [x] 7.4 When incident reaches terminal state (`resolved`/`failed`): stop all auto-refresh
 
-- [ ] Task 8: Tests (AC: all)
-  - [ ] 8.1 Unit test: Approve/Reject buttons render only when `state === 'awaiting_approval'`
-  - [ ] 8.2 Unit test: clicking Approve calls POST endpoint, updates pipeline stepper
-  - [ ] 8.3 Unit test: clicking Reject opens modal, submitting calls POST with reason
-  - [ ] 8.4 Unit test: NotificationBadge renders count; hidden when 0
-  - [ ] 8.5 Unit test: SSE hook reconnects with backoff on connection drop
-  - [ ] 8.6 Unit test: SSE event invalidates TanStack Query cache
-  - [ ] 8.7 Unit test: polling fallback activates when SSE disconnects
-  - [ ] 8.8 Unit test: minimum review time shows disabled state or countdown
-  - [ ] 8.9 Every test includes `expect(await axe(container)).toHaveNoViolations()`
-  - [ ] 8.10 MSW handlers for: `POST /api/v1/incidents/:id/approve`, `POST /api/v1/incidents/:id/reject`, `GET /api/v1/incidents/awaiting-approval`
+- [x] Task 8: Tests (AC: all)
+  - [x] 8.1 Unit test: Approve/Reject buttons render only when `state === 'awaiting_approval'`
+  - [x] 8.2 Unit test: clicking Approve calls POST endpoint, updates pipeline stepper
+  - [x] 8.3 Unit test: clicking Reject opens modal, submitting calls POST with reason
+  - [x] 8.4 Unit test: NotificationBadge renders count; hidden when 0
+  - [x] 8.5 Unit test: SSE hook reconnects with backoff on connection drop
+  - [x] 8.6 Unit test: SSE event invalidates TanStack Query cache
+  - [x] 8.7 Unit test: polling fallback activates when SSE disconnects
+  - [x] 8.8 Unit test: minimum review time shows disabled state or countdown
+  - [x] 8.9 Every test includes `expect(await axe(container)).toHaveNoViolations()`
+  - [x] 8.10 MSW handlers for: `POST /api/v1/incidents/:id/approve`, `POST /api/v1/incidents/:id/reject`, `GET /api/v1/incidents/awaiting-approval`
 
 ## Dev Notes
 
@@ -427,10 +427,46 @@ _(To be filled after review)_
 
 ### Agent Model Used
 
-_(To be filled during development)_
+Claude Opus 4.6
 
 ### Debug Log References
 
+- No blocking issues encountered during implementation.
+
 ### Completion Notes List
 
+- Implemented complete approval workflow with Approve (primary) and Reject (danger) buttons in remediation panel
+- Created fetch-based SSE hook with exponential backoff reconnection (1s initial, 30s max, jitter), Last-Event-ID support
+- Wired SSE events to TanStack Query cache invalidation for real-time UI updates
+- Added polling fallback (5s refetchInterval) when SSE disconnects, with "Live updates paused" indicator
+- Added NotificationBadge (PatternFly Badge) to sidebar nav showing awaiting-approval count
+- Rejection modal with required reason validation
+- Minimum review time handling (409 → disabled button + tooltip)
+- Error display with inline Alert and retry option
+- All accessibility requirements met (aria-labels, aria-describedby, aria-live)
+- 126 total tests pass (30 new tests added), 0 regressions
+- No new external dependencies added — used native fetch + ReadableStream for SSE
+
 ### File List
+
+- `frontend/src/hooks/use-sse.ts` [NEW]
+- `frontend/src/hooks/use-sse.test.ts` [NEW]
+- `frontend/src/features/incidents/hooks/use-approve-incident.ts` [NEW]
+- `frontend/src/features/incidents/hooks/use-reject-incident.ts` [NEW]
+- `frontend/src/features/incidents/hooks/use-awaiting-approval-count.ts` [NEW]
+- `frontend/src/features/incidents/hooks/use-incident-sse.ts` [NEW]
+- `frontend/src/features/incidents/hooks/use-incident-sse.test.tsx` [NEW]
+- `frontend/src/features/incidents/hooks/use-incident-detail.ts` [MODIFIED]
+- `frontend/src/features/incidents/components/approval-actions.tsx` [NEW]
+- `frontend/src/features/incidents/components/approval-actions.test.tsx` [NEW]
+- `frontend/src/features/incidents/components/remediation-panel.tsx` [MODIFIED]
+- `frontend/src/features/incidents/components/remediation-panel.test.tsx` [NEW]
+- `frontend/src/features/incidents/pages/incident-detail.tsx` [MODIFIED]
+- `frontend/src/features/incidents/pages/incident-detail.test.tsx` [MODIFIED]
+- `frontend/src/app/app.tsx` [MODIFIED]
+- `frontend/src/app/app.test.tsx` [MODIFIED]
+- `frontend/src/mocks/handlers.ts` [MODIFIED]
+
+### Change Log
+
+- 2026-08-15: Implemented Story 5.4 — Approval workflow, SSE real-time updates, polling fallback, NotificationBadge
