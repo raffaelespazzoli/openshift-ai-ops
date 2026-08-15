@@ -183,14 +183,15 @@ async def get_incident_detail(
     conn: asyncpg.Connection | asyncpg.Pool,
     incident_id: uuid.UUID,
 ) -> dict | None:
-    """Get full incident detail including correlated alerts.
+    """Get full incident detail including correlated alerts and pipeline stages.
 
     Returns None if the incident does not exist.
     """
     incident_row = await conn.fetchrow(
         """
         SELECT id, state, severity, created_at, updated_at,
-               fast_path, fast_path_similarity, fast_path_case_record_id
+               fast_path, fast_path_similarity, fast_path_case_record_id,
+               root_cause_event_id
         FROM incidents
         WHERE id = $1
         """,
@@ -211,7 +212,115 @@ async def get_incident_detail(
 
     result = dict(incident_row)
     result["alerts"] = [dict(r) for r in alert_rows]
-    result["correlation_evidence"] = {}
+
+    correlation_evidence: dict = {}
+    if result.get("root_cause_event_id"):
+        corr_row = await conn.fetchrow(
+            "SELECT correlation_evidence FROM correlation_groups WHERE id = $1",
+            result["root_cause_event_id"],
+        )
+        if corr_row and corr_row["correlation_evidence"]:
+            raw = corr_row["correlation_evidence"]
+            if isinstance(raw, str):
+                correlation_evidence = json.loads(raw)
+            else:
+                correlation_evidence = raw
+    result["correlation_evidence"] = correlation_evidence
+
+    diag_row = await conn.fetchrow(
+        "SELECT diagnosis, skeptic_verdict, sealed_at, created_at "
+        "FROM immutable_diagnoses WHERE incident_id = $1",
+        incident_id,
+    )
+    if diag_row:
+        diag_data = diag_row["diagnosis"]
+        if isinstance(diag_data, str):
+            diag_data = json.loads(diag_data)
+        result["diagnosis"] = diag_data
+        sv = diag_row["skeptic_verdict"]
+        if isinstance(sv, str):
+            sv = json.loads(sv)
+        result["skeptic_verdict"] = sv
+    else:
+        result["diagnosis"] = None
+        result["skeptic_verdict"] = None
+
+    skeptic_rows = await conn.fetch(
+        "SELECT round_number, response, created_at "
+        "FROM skeptic_reviews WHERE incident_id = $1 ORDER BY round_number",
+        incident_id,
+    )
+    diagnosis_attempts: list[dict] = []
+    for srow in skeptic_rows:
+        resp = srow["response"]
+        if isinstance(resp, str):
+            resp = json.loads(resp)
+        revised = resp.get("revised_diagnosis") if isinstance(resp, dict) else None
+        if revised:
+            revised["created_at"] = srow["created_at"]
+            diagnosis_attempts.append(revised)
+    if diag_row and result["diagnosis"]:
+        result["diagnosis"]["created_at"] = diag_row["created_at"]
+        diagnosis_attempts.append(result["diagnosis"])
+    result["diagnosis_attempts"] = diagnosis_attempts if len(diagnosis_attempts) > 1 else []
+
+    plan_row = await conn.fetchrow(
+        "SELECT plan, created_at FROM remediation_plans WHERE incident_id = $1",
+        incident_id,
+    )
+    if plan_row:
+        plan_data = plan_row["plan"]
+        if isinstance(plan_data, str):
+            plan_data = json.loads(plan_data)
+        result["remediation_plan"] = plan_data
+    else:
+        result["remediation_plan"] = None
+
+    exec_row = await conn.fetchrow(
+        "SELECT steps, mcp_calls, started_at, completed_at, status "
+        "FROM execution_logs WHERE incident_id = $1",
+        incident_id,
+    )
+    if exec_row:
+        steps = exec_row["steps"]
+        if isinstance(steps, str):
+            steps = json.loads(steps)
+        mcp_calls = exec_row["mcp_calls"]
+        if isinstance(mcp_calls, str):
+            mcp_calls = json.loads(mcp_calls)
+        result["execution_log"] = {
+            "steps": steps or [],
+            "mcp_calls": mcp_calls or [],
+            "started_at": exec_row["started_at"],
+            "completed_at": exec_row["completed_at"],
+            "status": exec_row["status"],
+        }
+    else:
+        result["execution_log"] = None
+
+    outcome_row = await conn.fetchrow(
+        "SELECT alert_resolved, resolution_method, resource_verification, "
+        "outcome_confidence, refire_detected, observation_started_at, "
+        "observation_completed_at "
+        "FROM outcome_results WHERE incident_id = $1",
+        incident_id,
+    )
+    if outcome_row:
+        rv = outcome_row["resource_verification"]
+        if isinstance(rv, str):
+            rv = json.loads(rv)
+        result["outcome"] = {
+            "alert_resolved": outcome_row["alert_resolved"],
+            "resolution_method": outcome_row["resolution_method"],
+            "resource_verification": rv,
+            "outcome_confidence": outcome_row["outcome_confidence"],
+            "refire_detected": outcome_row["refire_detected"],
+            "observation_started_at": outcome_row["observation_started_at"],
+            "observation_completed_at": outcome_row["observation_completed_at"],
+        }
+    else:
+        result["outcome"] = None
+
     return result
 
 

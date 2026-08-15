@@ -5,6 +5,7 @@ import { ErrorBoundary } from './error-boundary';
 import { OAuthCallback } from './oauth-callback';
 
 const IncidentsPage = lazy(() => import('@features/incidents'));
+const IncidentDetailPage = lazy(() => import('@features/incidents/pages/incident-detail'));
 const StatisticsPage = lazy(() => import('@features/statistics'));
 
 function PageLoader() {
@@ -26,6 +27,14 @@ export function AppRoutes() {
           element={
             <ErrorBoundary>
               <IncidentsPage />
+            </ErrorBoundary>
+          }
+        />
+        <Route
+          path="/incidents/:id"
+          element={
+            <ErrorBoundary>
+              <IncidentDetailPage />
             </ErrorBoundary>
           }
         />
