@@ -34,21 +34,22 @@ async def list_incidents_endpoint(
     severity: list[str] | None = Query(None),
     from_time: datetime | None = Query(None),
     to_time: datetime | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
 ) -> dict:
-    """Return the full list of incidents with optional filters.
-
-    No pagination in v1 — UX renders all incidents with scroll.
-    """
+    """Return a paginated list of incidents with optional filters."""
     request.state.user = user
 
     pool = await get_pool()
     async with pool.acquire() as conn:
-        incidents = await list_incidents(
+        incidents, total = await list_incidents(
             conn,
             statuses=status,
             severities=severity,
             from_time=from_time,
             to_time=to_time,
+            page=page,
+            page_size=page_size,
         )
 
     serialized = []
@@ -64,7 +65,9 @@ async def list_incidents_endpoint(
 
     meta = ApiMeta(
         request_id=request_id_var.get() or "",
-        total=len(serialized),
+        page=page,
+        page_size=page_size,
+        total=total,
     )
     return ApiResponse(data=serialized, meta=meta).model_dump(mode="json")
 
