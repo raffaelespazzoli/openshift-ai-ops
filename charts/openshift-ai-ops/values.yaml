@@ -1,3 +1,18 @@
+frontend:
+  replicaCount: 1
+  image:
+    repository: quay.io/raffaelespazzoli/openshift-ai-ops-frontend
+    tag: "0.1.0"
+    pullPolicy: Always
+  port: 8080
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "200m"
+
 backend:
   replicaCount: 1
   image:

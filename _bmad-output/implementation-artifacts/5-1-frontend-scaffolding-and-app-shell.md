@@ -1,6 +1,10 @@
+---
+baseline_commit: ba92badbb389f9b8e9528305597783be08772566
+---
+
 # Story 5.1: Frontend Scaffolding & App Shell
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -24,58 +28,58 @@ so that the tool feels familiar and will migrate seamlessly to a Console plugin 
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Initialize React 19 + TypeScript + Vite project (AC: #1)
-  - [ ] 1.1 Run `npm create vite@latest frontend -- --template react-ts` or equivalent scaffolding
-  - [ ] 1.2 Install PatternFly 6 core packages (`@patternfly/react-core`, `@patternfly/react-icons`, `@patternfly/react-styles`, `@patternfly/react-tokens`)
-  - [ ] 1.3 Install TanStack Query v5 (`@tanstack/react-query`, `@tanstack/react-query-devtools`)
-  - [ ] 1.4 Install test tooling: Vitest (or Jest), React Testing Library, jest-axe, MSW
-  - [ ] 1.5 Configure `tsconfig.json` with strict mode, `noEmit: true`, path aliases
-  - [ ] 1.6 Configure `vite.config.ts` with `@vitejs/plugin-react`, proxy for `/api` during dev
-  - [ ] 1.7 Delete the `.gitkeep` in `frontend/src/` and scaffold the feature-based directory layout
+- [x] Task 1: Initialize React 19 + TypeScript + Vite project (AC: #1)
+  - [x] 1.1 Run `npm create vite@latest frontend -- --template react-ts` or equivalent scaffolding
+  - [x] 1.2 Install PatternFly 6 core packages (`@patternfly/react-core`, `@patternfly/react-icons`, `@patternfly/react-styles`, `@patternfly/react-tokens`)
+  - [x] 1.3 Install TanStack Query v5 (`@tanstack/react-query`, `@tanstack/react-query-devtools`)
+  - [x] 1.4 Install test tooling: Vitest (or Jest), React Testing Library, jest-axe, MSW
+  - [x] 1.5 Configure `tsconfig.json` with strict mode, `noEmit: true`, path aliases
+  - [x] 1.6 Configure `vite.config.ts` with `@vitejs/plugin-react`, proxy for `/api` during dev
+  - [x] 1.7 Delete the `.gitkeep` in `frontend/src/` and scaffold the feature-based directory layout
 
-- [ ] Task 2: Create feature-based directory structure (AC: #1)
-  - [ ] 2.1 Create `frontend/src/app/` — App shell, routing, providers
-  - [ ] 2.2 Create `frontend/src/components/` — Shared PatternFly-based components
-  - [ ] 2.3 Create `frontend/src/features/incidents/` — Incidents feature module (placeholder)
-  - [ ] 2.4 Create `frontend/src/features/statistics/` — Statistics feature module (placeholder)
-  - [ ] 2.5 Create `frontend/src/features/approval/` — Approval feature module (placeholder)
-  - [ ] 2.6 Create `frontend/src/hooks/` — Shared hooks (useSSE, useApiClient, etc.)
-  - [ ] 2.7 Create `frontend/src/providers/` — DataProvider interface + REST implementation
-  - [ ] 2.8 Create `frontend/src/models/` — TypeScript types matching API envelope
-  - [ ] 2.9 Create `frontend/src/mocks/` — MSW handlers for testing
-  - [ ] 2.10 Create `frontend/src/utils/` — Pure utility functions
+- [x] Task 2: Create feature-based directory structure (AC: #1)
+  - [x] 2.1 Create `frontend/src/app/` — App shell, routing, providers
+  - [x] 2.2 Create `frontend/src/components/` — Shared PatternFly-based components
+  - [x] 2.3 Create `frontend/src/features/incidents/` — Incidents feature module (placeholder)
+  - [x] 2.4 Create `frontend/src/features/statistics/` — Statistics feature module (placeholder)
+  - [x] 2.5 Create `frontend/src/features/approval/` — Approval feature module (placeholder)
+  - [x] 2.6 Create `frontend/src/hooks/` — Shared hooks (useSSE, useApiClient, etc.)
+  - [x] 2.7 Create `frontend/src/providers/` — DataProvider interface + REST implementation
+  - [x] 2.8 Create `frontend/src/models/` — TypeScript types matching API envelope
+  - [x] 2.9 Create `frontend/src/mocks/` — MSW handlers for testing
+  - [x] 2.10 Create `frontend/src/utils/` — Pure utility functions
 
-- [ ] Task 3: Implement App Shell with Console layout (AC: #2, #3)
-  - [ ] 3.1 Create `main.tsx` entry point importing PatternFly CSS
-  - [ ] 3.2 Implement `App.tsx` using PatternFly `Page`, `Masthead`, `PageSidebar` with Console shell layout
-  - [ ] 3.3 Add vertical `Nav` with two items: "Incidents" (default active) and "Statistics"
-  - [ ] 3.4 Configure React Router with two routes for Incidents and Statistics (lazy-loaded per FA-4)
-  - [ ] 3.5 Add PatternFly theme toggle in masthead; default to dark mode
-  - [ ] 3.6 Create placeholder route components that render PatternFly `EmptyState`
-  - [ ] 3.7 Wrap each route component in a React error boundary with PatternFly `EmptyState` fallback (danger icon + "Reload" action)
+- [x] Task 3: Implement App Shell with Console layout (AC: #2, #3)
+  - [x] 3.1 Create `main.tsx` entry point importing PatternFly CSS
+  - [x] 3.2 Implement `App.tsx` using PatternFly `Page`, `Masthead`, `PageSidebar` with Console shell layout
+  - [x] 3.3 Add vertical `Nav` with two items: "Incidents" (default active) and "Statistics"
+  - [x] 3.4 Configure React Router with two routes for Incidents and Statistics (lazy-loaded per FA-4)
+  - [x] 3.5 Add PatternFly theme toggle in masthead; default to dark mode
+  - [x] 3.6 Create placeholder route components that render PatternFly `EmptyState`
+  - [x] 3.7 Wrap each route component in a React error boundary with PatternFly `EmptyState` fallback (danger icon + "Reload" action)
 
-- [ ] Task 4: Implement DataProvider abstraction and API client (AC: #4, #5)
-  - [ ] 4.1 Define `DataProvider` interface in `providers/` (future Console SDK migration seam per FA-1)
-  - [ ] 4.2 Implement REST `DataProvider` with typed fetch wrapper handling the `{data, meta}` envelope
-  - [ ] 4.3 Implement error response parsing for `{error, code, detail}` format
-  - [ ] 4.4 Implement OpenShift OAuth flow stub — redirect to OAuth, store token, inject `Authorization: Bearer <token>` header
-  - [ ] 4.5 Set up `QueryClient` with appropriate defaults (`staleTime`, error handling)
-  - [ ] 4.6 Wrap the app in `QueryClientProvider`
+- [x] Task 4: Implement DataProvider abstraction and API client (AC: #4, #5)
+  - [x] 4.1 Define `DataProvider` interface in `providers/` (future Console SDK migration seam per FA-1)
+  - [x] 4.2 Implement REST `DataProvider` with typed fetch wrapper handling the `{data, meta}` envelope
+  - [x] 4.3 Implement error response parsing for `{error, code, detail}` format
+  - [x] 4.4 Implement OpenShift OAuth flow stub — redirect to OAuth, store token, inject `Authorization: Bearer <token>` header
+  - [x] 4.5 Set up `QueryClient` with appropriate defaults (`staleTime`, error handling)
+  - [x] 4.6 Wrap the app in `QueryClientProvider`
 
-- [ ] Task 5: Add Helm chart frontend deployment (AC: #6)
-  - [ ] 5.1 Create `charts/openshift-ai-ops/templates/deployment-frontend.yaml` — nginx container serving static assets
-  - [ ] 5.2 Create `charts/openshift-ai-ops/templates/service-frontend.yaml`
-  - [ ] 5.3 Add `frontend` section to `values.yaml` (image, port 8080, resource limits)
-  - [ ] 5.4 Create `frontend/Dockerfile` — multi-stage build (Node build → nginx serve)
-  - [ ] 5.5 Create `frontend/nginx.conf` — serve `index.html` for all routes (SPA fallback), proxy `/api` to backend service
+- [x] Task 5: Add Helm chart frontend deployment (AC: #6)
+  - [x] 5.1 Create `charts/openshift-ai-ops/templates/deployment-frontend.yaml` — nginx container serving static assets
+  - [x] 5.2 Create `charts/openshift-ai-ops/templates/service-frontend.yaml`
+  - [x] 5.3 Add `frontend` section to `values.yaml` (image, port 8080, resource limits)
+  - [x] 5.4 Create `frontend/Dockerfile` — multi-stage build (Node build → nginx serve)
+  - [x] 5.5 Create `frontend/nginx.conf` — serve `index.html` for all routes (SPA fallback), proxy `/api` to backend service
 
-- [ ] Task 6: Testing infrastructure (AC: #1)
-  - [ ] 6.1 Configure test runner (Vitest or Jest) with jsdom environment
-  - [ ] 6.2 Add MSW setup file in `frontend/src/mocks/handlers.ts` with sample API response mocks
-  - [ ] 6.3 Write unit test for App Shell: verifies masthead renders, both nav items present, dark mode default
-  - [ ] 6.4 Write unit test for API envelope handling: correct data extraction and error parsing
-  - [ ] 6.5 Include `jest-axe` assertion in every component test: `expect(await axe(container)).toHaveNoViolations()`
-  - [ ] 6.6 Verify all tests pass with `npm test`
+- [x] Task 6: Testing infrastructure (AC: #1)
+  - [x] 6.1 Configure test runner (Vitest or Jest) with jsdom environment
+  - [x] 6.2 Add MSW setup file in `frontend/src/mocks/handlers.ts` with sample API response mocks
+  - [x] 6.3 Write unit test for App Shell: verifies masthead renders, both nav items present, dark mode default
+  - [x] 6.4 Write unit test for API envelope handling: correct data extraction and error parsing
+  - [x] 6.5 Include `jest-axe` assertion in every component test: `expect(await axe(container)).toHaveNoViolations()`
+  - [x] 6.6 Verify all tests pass with `npm test`
 
 ## Dev Notes
 
@@ -343,10 +347,63 @@ _(To be filled after review)_
 
 ### Agent Model Used
 
-_(To be filled during development)_
+Claude Opus 4.6 (via Cursor)
 
 ### Debug Log References
 
+- PatternFly 6 does not ship a separate `base-dark-theme.css`; dark mode is toggled purely via the `pf-v6-theme-dark` CSS class on the `<html>` element with just `base.css` imported.
+- `tsconfig.node.json` with `composite: true` requires either removing `noEmit` or using `emitDeclarationOnly: true` to satisfy the project references constraint used by `tsc -b`.
+- Test files importing from `vitest` must be excluded from the main `tsconfig.json` to avoid type resolution issues (vitest globals types are handled by vitest's own type augmentation at runtime).
+- jest-axe does not ship its own TypeScript declarations; a custom `vite-env.d.ts` module declaration is required.
+
 ### Completion Notes List
 
+- **Task 1:** Initialized React 19 + TypeScript + Vite 6 project with PatternFly 6.6.x, TanStack Query 5, react-router-dom 7, Vitest 3, RTL 16, MSW 2, jest-axe. Strict tsconfig with path aliases.
+- **Task 2:** Created complete feature-based directory structure: `app/`, `components/`, `features/{incidents,statistics,approval}/`, `hooks/`, `providers/`, `models/`, `mocks/`, `utils/`. All kebab-case filenames.
+- **Task 3:** Implemented App Shell with PatternFly Page/Masthead/PageSidebar/Nav. Two nav items (Incidents, Statistics). Dark mode default via `pf-v6-theme-dark` class. Theme toggle in masthead (Sun/Moon icons). React Router with lazy-loaded routes. Error boundary with PatternFly EmptyState danger fallback.
+- **Task 4:** DataProvider interface (migration seam per FA-1) with get/post/subscribe methods. REST provider with envelope extraction, typed error parsing (ApiClientError class), OAuth stub (token from localStorage or VITE_DEV_TOKEN env var, redirect flow, state validation). QueryClient with 30s staleTime, wrapped in QueryClientProvider.
+- **Task 5:** Helm chart additions: deployment-frontend.yaml (nginx, port 8080, health probes), service-frontend.yaml (ClusterIP), values.yaml frontend section. Multi-stage Dockerfile (node:22-alpine build → nginx:1.27-alpine serve). nginx.conf with SPA fallback, /api proxy to backend, cache headers.
+- **Task 6:** Vitest configured with jsdom, globals, CSS support. MSW handlers centralized in mocks/handlers.ts. 10 tests total: 5 App Shell tests (masthead, nav items, dark mode, theme toggle, a11y) + 5 API client tests (envelope extraction, params, error parsing, POST, unknown errors). All pass with jest-axe assertions.
+
 ### File List
+
+| Action | File | Description |
+|--------|------|-------------|
+| NEW | frontend/package.json | Project manifest with all dependencies |
+| NEW | frontend/tsconfig.json | TypeScript config with strict mode and path aliases |
+| NEW | frontend/tsconfig.node.json | TypeScript config for Vite config files |
+| NEW | frontend/vite.config.ts | Vite configuration with React plugin, path aliases, API proxy |
+| NEW | frontend/vitest.config.ts | Vitest test runner configuration (jsdom, globals, setup) |
+| NEW | frontend/index.html | HTML entry point with pf-v6-theme-dark class |
+| NEW | frontend/.env.example | Environment variable template |
+| NEW | frontend/Dockerfile | Multi-stage build (Node → nginx) |
+| NEW | frontend/nginx.conf | nginx config with SPA fallback and API proxy |
+| NEW | frontend/src/main.tsx | App entry point with providers |
+| NEW | frontend/src/index.css | Global styles (PatternFly base CSS import) |
+| NEW | frontend/src/vite-env.d.ts | Vite client types and jest-axe declarations |
+| NEW | frontend/src/test-setup.ts | Test setup importing jest-dom matchers |
+| NEW | frontend/src/app/app.tsx | Main App component with PF Page layout |
+| NEW | frontend/src/app/app.test.tsx | App Shell unit tests (5 tests) |
+| NEW | frontend/src/app/routes.tsx | Route definitions with lazy loading |
+| NEW | frontend/src/app/error-boundary.tsx | Reusable error boundary component |
+| NEW | frontend/src/components/theme-toggle.tsx | Dark/light mode toggle |
+| NEW | frontend/src/features/incidents/index.tsx | Incidents placeholder (EmptyState) |
+| NEW | frontend/src/features/statistics/index.tsx | Statistics placeholder (EmptyState) |
+| NEW | frontend/src/hooks/use-api-client.ts | Typed API client hook |
+| NEW | frontend/src/providers/data-provider.ts | DataProvider interface (migration seam) |
+| NEW | frontend/src/providers/rest-provider.ts | REST DataProvider implementation |
+| NEW | frontend/src/providers/rest-provider.test.ts | API client unit tests (5 tests) |
+| NEW | frontend/src/models/api.ts | ApiResponse, ApiMeta, ApiError types |
+| NEW | frontend/src/models/incident.ts | Incident, Alert TypeScript types |
+| NEW | frontend/src/mocks/handlers.ts | Centralized MSW mock API handlers |
+| NEW | frontend/src/mocks/server.ts | MSW server setup for tests |
+| NEW | frontend/src/utils/auth.ts | OAuth flow utilities (token management) |
+| NEW | frontend/src/utils/date.ts | Date formatting helpers |
+| NEW | charts/openshift-ai-ops/templates/deployment-frontend.yaml | Helm frontend Deployment |
+| NEW | charts/openshift-ai-ops/templates/service-frontend.yaml | Helm frontend Service |
+| MODIFIED | charts/openshift-ai-ops/values.yaml | Added frontend section |
+| DELETED | frontend/src/.gitkeep | Removed placeholder |
+
+### Change Log
+
+- 2026-08-15: Implemented Story 5.1 — Full frontend scaffolding with React 19, PatternFly 6, Vite, TanStack Query, OAuth stub, Helm deployment, and 10 passing tests.
