@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
+  Badge,
   Page,
   Masthead,
   MastheadMain,
@@ -17,11 +18,13 @@ import {
   ToolbarItem,
 } from '@patternfly/react-core';
 import { ThemeToggle } from '@components/theme-toggle';
+import { useAwaitingApprovalCount } from '@features/incidents/hooks/use-awaiting-approval-count';
 import { AppRoutes } from './routes';
 
 export function App() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { data: awaitingCount } = useAwaitingApprovalCount();
 
   const onNavSelect = useCallback(
     (_event: React.FormEvent<HTMLInputElement>, result: { itemId: number | string }) => {
@@ -54,6 +57,17 @@ export function App() {
           <NavList>
             <NavItem itemId="/incidents" isActive={location.pathname.startsWith('/incidents')}>
               Incidents
+              {awaitingCount != null && awaitingCount > 0 && (
+                <>
+                  {' '}
+                  <Badge
+                    isRead={false}
+                    aria-label={`${awaitingCount} incidents awaiting approval`}
+                  >
+                    {awaitingCount}
+                  </Badge>
+                </>
+              )}
             </NavItem>
             <NavItem itemId="/statistics" isActive={location.pathname.startsWith('/statistics')}>
               Statistics
