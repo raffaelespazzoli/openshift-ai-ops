@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bullseye,
-  Spinner,
+  Skeleton,
   EmptyState,
   EmptyStateBody,
   EmptyStateActions,
@@ -45,7 +45,7 @@ export function OAuthCallback() {
 
   return (
     <Bullseye>
-      <Spinner aria-label="Completing authentication" />
+      <Skeleton width="200px" height="24px" aria-label="Completing authentication" />
     </Bullseye>
   );
 }

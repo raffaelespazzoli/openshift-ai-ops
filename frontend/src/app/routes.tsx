@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { Bullseye, Spinner } from '@patternfly/react-core';
+import { Skeleton } from '@patternfly/react-core';
 import { ErrorBoundary } from './error-boundary';
 import { OAuthCallback } from './oauth-callback';
 
@@ -9,9 +9,10 @@ const StatisticsPage = lazy(() => import('@features/statistics'));
 
 function PageLoader() {
   return (
-    <Bullseye>
-      <Spinner aria-label="Loading page" />
-    </Bullseye>
+    <div aria-label="Loading page" aria-busy="true" style={{ padding: '24px' }}>
+      <Skeleton width="30%" height="28px" style={{ marginBottom: '16px' }} aria-label="Page heading loading" />
+      <Skeleton width="100%" height="300px" aria-label="Page content loading" />
+    </div>
   );
 }
 

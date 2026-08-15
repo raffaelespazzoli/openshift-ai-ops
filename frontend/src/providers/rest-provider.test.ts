@@ -1,10 +1,20 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { server } from '@mocks/server';
 import { http, HttpResponse } from 'msw';
 import { restProvider, ApiClientError } from './rest-provider';
+import { clearToken, initiateOAuthFlow } from '@utils/auth';
+
+vi.mock('@utils/auth', () => ({
+  clearToken: vi.fn(),
+  initiateOAuthFlow: vi.fn(),
+  getStoredToken: vi.fn(),
+}));
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  vi.clearAllMocks();
+});
 afterAll(() => server.close());
 
 describe('restProvider', () => {
@@ -95,6 +105,41 @@ describe('restProvider', () => {
         expect((error as ApiClientError).code).toBe('UNKNOWN_ERROR');
         expect((error as ApiClientError).status).toBe(500);
       }
+    });
+
+    it('clears token and initiates OAuth flow on 401', async () => {
+      server.use(
+        http.get('/api/v1/incidents', () => {
+          return HttpResponse.json(
+            { error: 'Unauthorized', code: 'UNAUTHORIZED', detail: {} },
+            { status: 401 },
+          );
+        }),
+      );
+
+      await expect(restProvider.get('/api/v1/incidents')).rejects.toMatchObject({
+        code: 'UNAUTHORIZED',
+        status: 401,
+      });
+      expect(clearToken).toHaveBeenCalledOnce();
+      expect(initiateOAuthFlow).toHaveBeenCalledOnce();
+    });
+
+    it('does not trigger re-auth for non-401 errors', async () => {
+      server.use(
+        http.get('/api/v1/incidents/forbidden', () => {
+          return HttpResponse.json(
+            { error: 'Forbidden', code: 'FORBIDDEN', detail: {} },
+            { status: 403 },
+          );
+        }),
+      );
+
+      await expect(restProvider.get('/api/v1/incidents/forbidden')).rejects.toMatchObject({
+        status: 403,
+      });
+      expect(clearToken).not.toHaveBeenCalled();
+      expect(initiateOAuthFlow).not.toHaveBeenCalled();
     });
   });
 

@@ -43,6 +43,12 @@ describe('OAuthCallback', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/incidents', { replace: true });
   });
 
+  it('shows skeleton loading state while processing callback', async () => {
+    (handleOAuthCallback as Mock).mockReturnValue(true);
+    await renderCallback();
+    expect(screen.getByLabelText('Completing authentication')).toBeInTheDocument();
+  });
+
   it('shows error state when token exchange fails', async () => {
     (handleOAuthCallback as Mock).mockReturnValue(false);
     await renderCallback('/oauth/callback');
