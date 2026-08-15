@@ -27,12 +27,18 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('[ErrorBoundary]', error, errorInfo);
+  }
+
   handleReload = () => {
     this.setState({ hasError: false, error: null });
   };
 
   render() {
     if (this.state.hasError) {
+      const isDev = import.meta.env.DEV;
+
       return (
         <EmptyState
           headingLevel="h2"
@@ -41,7 +47,9 @@ export class ErrorBoundary extends Component<Props, State> {
           status="danger"
         >
           <EmptyStateBody>
-            {this.state.error?.message || 'An unexpected error occurred.'}
+            {isDev
+              ? this.state.error?.message || 'An unexpected error occurred.'
+              : 'Something went wrong. Please try again.'}
           </EmptyStateBody>
           <EmptyStateFooter>
             <EmptyStateActions>
