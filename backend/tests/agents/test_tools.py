@@ -63,7 +63,7 @@ class TestQueryClusterResources:
             "name": "my-pod",
         })
         assert result["type"] == "evidence"
-        assert "get_resource" in result["query"]
+        assert "resources_get" in result["query"]
 
 
 class TestGetResourceLogs:

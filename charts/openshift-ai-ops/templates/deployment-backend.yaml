@@ -134,6 +134,8 @@ spec:
               value: "{{ .Values.execution.refireWindowSeconds }}"
             - name: EXECUTION_LOCK_POLL_INTERVAL
               value: "{{ .Values.execution.lockPollIntervalSeconds }}"
+            - name: LLM_PROVIDER
+              value: "{{ .Values.llm.provider | default "openai" }}"
             - name: LLM_ENDPOINT
               value: "{{ .Values.llm.endpoint }}"
             - name: LLM_MODEL
@@ -142,25 +144,48 @@ spec:
               value: "{{ .Values.llm.temperature }}"
             - name: LLM_MAX_TOKENS
               value: "{{ .Values.llm.maxTokens }}"
+            {{- if .Values.llm.reasoningEffort }}
+            - name: LLM_REASONING_EFFORT
+              value: "{{ .Values.llm.reasoningEffort }}"
+            {{- end }}
+            {{- if eq (.Values.llm.provider | default "openai") "anthropic" }}
+            - name: ANTHROPIC_API_KEY
+            {{- else }}
             - name: LLM_API_KEY
+            {{- end }}
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.llm.apiKeySecret.name }}
                   key: {{ .Values.llm.apiKeySecret.key }}
+            - name: EMBEDDING_PROVIDER
+              value: "{{ .Values.llm.embeddingProvider | default "openai" }}"
             - name: EMBEDDING_ENDPOINT
+              {{- if .Values.llm.embeddingEndpoint }}
+              value: "{{ .Values.llm.embeddingEndpoint }}"
+              {{- else }}
               value: "{{ .Values.llm.endpoint }}"
+              {{- end }}
             - name: EMBEDDING_MODEL
               value: "{{ .Values.llm.embeddingModel | default "text-embedding-3-small" }}"
+            - name: EMBEDDING_DIMENSIONS
+              value: "{{ .Values.llm.embeddingDimensions | default 1536 }}"
             - name: EMBEDDING_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.llm.apiKeySecret.name }}
                   key: {{ .Values.llm.apiKeySecret.key }}
+            - name: RUNBOOKS_DIRECTORY
+              value: "{{ .Values.knowledge.runbooksDirectory | default "/app/runbooks" }}"
           volumeMounts:
             - name: agentic-skills
               mountPath: /skills
               subPath: skills
               readOnly: true
+          startupProbe:
+            tcpSocket:
+              port: {{ .Values.backend.port }}
+            periodSeconds: 5
+            failureThreshold: 72
           livenessProbe:
             tcpSocket:
               port: {{ .Values.backend.port }}

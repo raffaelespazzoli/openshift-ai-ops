@@ -6,10 +6,11 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 vi.mock('@utils/auth', () => ({
   isAuthenticated: vi.fn(),
   initiateOAuthFlow: vi.fn(),
+  shouldUseClientOAuth: vi.fn(),
 }));
 
 import { AuthGuard } from './auth-guard';
-import { isAuthenticated, initiateOAuthFlow } from '@utils/auth';
+import { isAuthenticated, initiateOAuthFlow, shouldUseClientOAuth } from '@utils/auth';
 
 expect.extend(toHaveNoViolations);
 
@@ -41,6 +42,7 @@ describe('AuthGuard', () => {
 
   it('redirects unauthenticated users via OAuth flow', async () => {
     (isAuthenticated as Mock).mockReturnValue(false);
+    (shouldUseClientOAuth as Mock).mockReturnValue(true);
     await renderGuard();
     expect(initiateOAuthFlow).toHaveBeenCalledOnce();
     expect(screen.queryByTestId('protected')).not.toBeInTheDocument();
@@ -48,11 +50,20 @@ describe('AuthGuard', () => {
 
   it('shows error state when OAuth is misconfigured', async () => {
     (isAuthenticated as Mock).mockReturnValue(false);
+    (shouldUseClientOAuth as Mock).mockReturnValue(true);
     await renderGuard();
     expect(screen.getByText('Authentication configuration error')).toBeInTheDocument();
     expect(
       screen.getByText(/contact an administrator/i),
     ).toBeInTheDocument();
+  });
+
+  it('allows access when auth is handled by oauth-proxy', async () => {
+    (isAuthenticated as Mock).mockReturnValue(false);
+    (shouldUseClientOAuth as Mock).mockReturnValue(false);
+    await renderGuard();
+    expect(screen.getByTestId('protected')).toBeInTheDocument();
+    expect(initiateOAuthFlow).not.toHaveBeenCalled();
   });
 
   it('allows /oauth/callback through without authentication', async () => {

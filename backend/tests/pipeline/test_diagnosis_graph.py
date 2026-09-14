@@ -506,6 +506,7 @@ class TestGraphCheckpoint:
             kwargs={"autocommit": True, "row_factory": dict_row},
             min_size=1,
             max_size=2,
+            open=False,
         )
         await pool.open()
 
@@ -547,6 +548,7 @@ class TestGraphCheckpoint:
             kwargs={"autocommit": True, "row_factory": dict_row},
             min_size=1,
             max_size=2,
+            open=False,
         )
         await pool.open()
 

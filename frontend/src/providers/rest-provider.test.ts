@@ -2,12 +2,13 @@ import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest
 import { server } from '@mocks/server';
 import { http, HttpResponse } from 'msw';
 import { restProvider, ApiClientError } from './rest-provider';
-import { clearToken, initiateOAuthFlow } from '@utils/auth';
+import { clearToken, initiateOAuthFlow, shouldUseClientOAuth } from '@utils/auth';
 
 vi.mock('@utils/auth', () => ({
   clearToken: vi.fn(),
   initiateOAuthFlow: vi.fn(),
   getStoredToken: vi.fn(),
+  shouldUseClientOAuth: vi.fn(() => true),
 }));
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
@@ -103,7 +104,27 @@ describe('restProvider', () => {
       }
     });
 
+    it('clears token without initiating OAuth when client OAuth is unused', async () => {
+      vi.mocked(shouldUseClientOAuth).mockReturnValue(false);
+      server.use(
+        http.get('/api/v1/incidents', () => {
+          return HttpResponse.json(
+            { error: 'Unauthorized', code: 'UNAUTHORIZED', detail: {} },
+            { status: 401 },
+          );
+        }),
+      );
+
+      await expect(restProvider.get('/api/v1/incidents')).rejects.toMatchObject({
+        code: 'UNAUTHORIZED',
+        status: 401,
+      });
+      expect(clearToken).toHaveBeenCalledOnce();
+      expect(initiateOAuthFlow).not.toHaveBeenCalled();
+    });
+
     it('clears token and initiates OAuth flow on 401', async () => {
+      vi.mocked(shouldUseClientOAuth).mockReturnValue(true);
       server.use(
         http.get('/api/v1/incidents', () => {
           return HttpResponse.json(

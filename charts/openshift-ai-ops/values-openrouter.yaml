@@ -1,0 +1,53 @@
+# Overlay: OpenRouter chat (no laptop Ollama / Tailscale).
+# Prerequisites:
+#   1. OpenRouter API key in Secret openshift-ai-ops-llm (key api-key)
+#   2. Apply with:
+#        helm upgrade --install openshift-ai-ops ./charts/openshift-ai-ops \
+#          -n openshift-ai-ops -f charts/openshift-ai-ops/values-openrouter.yaml
+#      Do not pass --reuse-values (would keep Tailscale LLM_ENDPOINT).
+
+frontend:
+  image:
+    repository: quay.io/raffaelespazzoli/openshift-ai-ops-frontend
+    tag: "0.1.2"
+    pullPolicy: Always
+  imagePullSecrets:
+    - quay-pull-secret
+  oauthProxy:
+    image:
+      repository: registry.redhat.io/openshift4/ose-oauth-proxy
+      tag: "latest"
+    redirectUrl: ""
+    sessionSecret: ""
+  route:
+    enabled: true
+    host: "openshift-ai-ops-frontend-openshift-ai-ops.apps.etl6.ocp.rht-labs.com"
+
+backend:
+  image:
+    repository: quay.io/raffaelespazzoli/openshift-ai-ops-backend
+    tag: "0.1.4"
+    pullPolicy: Always
+
+queue:
+  parallelismCap: 1
+
+llm:
+  endpoint: "https://openrouter.ai/api/v1"
+  model: "stealth/ox-alpha"
+  temperature: "0.0"
+  maxTokens: "8192"
+  reasoningEffort: ""
+  embeddingEndpoint: "https://openrouter.ai/api/v1"
+  # Embeddings stay 1024-d to match pgvector. RAG stays skipped below.
+  embeddingModel: "qwen/qwen3-embedding-0.6b"
+  embeddingDimensions: 1024
+  tailscaleEgress:
+    enabled: false
+
+solr:
+  storage:
+    storageClass: ontap-nas
+
+knowledge:
+  runbooksDirectory: /var/tmp/no-runbooks

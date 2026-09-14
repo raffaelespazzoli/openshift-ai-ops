@@ -1,6 +1,11 @@
 """Knowledge retrieval settings — embedding model, RAG thresholds, chunk sizes.
 
 Configuration for the runbook RAG pipeline (AD-13 path 1).
+
+Embedding provider (``EMBEDDING_PROVIDER``):
+
+* ``openai``  – OpenAI-compatible ``/v1/embeddings`` (OpenAI, vLLM, Ollama /v1).
+* ``ollama``  – Native Ollama embeddings API (requires ``langchain-ollama``).
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ _DEFAULT_RUNBOOKS_DIR = str(_BACKEND_ROOT / "runbooks")
 class KnowledgeSettings:
     """Configuration for knowledge retrieval and embedding."""
 
+    embedding_provider: str = "openai"
     embedding_endpoint: str = "http://localhost:11434/v1"
     embedding_model: str = "text-embedding-3-small"
     embedding_api_key_env: str = "EMBEDDING_API_KEY"
@@ -36,6 +42,9 @@ class KnowledgeSettings:
     @classmethod
     def from_env(cls) -> KnowledgeSettings:
         return cls(
+            embedding_provider=os.environ.get(
+                "EMBEDDING_PROVIDER", "openai"
+            ),
             embedding_endpoint=os.environ.get(
                 "EMBEDDING_ENDPOINT", "http://localhost:11434/v1"
             ),

@@ -1,6 +1,6 @@
 import type { ApiResponse } from '@models/api';
 import { isApiError } from '@models/api';
-import { clearToken, initiateOAuthFlow } from '@utils/auth';
+import { clearToken, initiateOAuthFlow, shouldUseClientOAuth } from '@utils/auth';
 import type { DataProvider } from './data-provider';
 
 export class ApiClientError extends Error {
@@ -37,7 +37,9 @@ async function handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
   if (!response.ok) {
     if (response.status === 401) {
       clearToken();
-      initiateOAuthFlow();
+      if (shouldUseClientOAuth()) {
+        initiateOAuthFlow();
+      }
     }
 
     const body: unknown = await response.json().catch(() => null);

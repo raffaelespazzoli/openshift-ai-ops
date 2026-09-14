@@ -1,5 +1,5 @@
 REGISTRY ?= quay.io/raffaelespazzoli/openshift-ai-ops
-VERSION ?= 0.1.0
+VERSION ?= 0.1.4
 CONTAINER_ENGINE ?= podman
 
 BACKEND_IMAGE = $(REGISTRY)-backend:$(VERSION)

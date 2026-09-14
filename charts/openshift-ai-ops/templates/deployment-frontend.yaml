@@ -20,6 +20,7 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: frontend
     spec:
+      serviceAccountName: {{ .Release.Name }}-frontend-proxy
       containers:
         - name: frontend
           image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
@@ -45,3 +46,48 @@ spec:
             periodSeconds: 5
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
+        - name: oauth-proxy
+          image: "{{ .Values.frontend.oauthProxy.image.repository }}:{{ .Values.frontend.oauthProxy.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: proxy
+              containerPort: 8443
+              protocol: TCP
+          args:
+            - --https-address=:8443
+            - --provider=openshift
+            - --openshift-service-account={{ .Release.Name }}-frontend-proxy
+            - --upstream=http://localhost:{{ .Values.frontend.port }}
+            - --tls-cert=/etc/tls/private/tls.crt
+            - --tls-key=/etc/tls/private/tls.key
+            - --cookie-secret-file=/etc/proxy/secrets/session-secret
+            - --cookie-secure=true
+            - --email-domain=*
+            - --openshift-delegate-urls={}
+            - --pass-basic-auth=false
+            - --pass-user-headers=true
+            - --pass-access-token=true
+            {{- if .Values.frontend.route.host }}
+            - --redirect-url=https://{{ .Values.frontend.route.host }}/oauth/callback
+            {{- end }}
+          volumeMounts:
+            - name: proxy-tls
+              mountPath: /etc/tls/private
+              readOnly: true
+            - name: proxy-secret
+              mountPath: /etc/proxy/secrets
+              readOnly: true
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "10m"
+            limits:
+              memory: "64Mi"
+              cpu: "100m"
+      volumes:
+        - name: proxy-tls
+          secret:
+            secretName: {{ .Release.Name }}-frontend-proxy-tls
+        - name: proxy-secret
+          secret:
+            secretName: {{ .Release.Name }}-frontend-proxy-secret

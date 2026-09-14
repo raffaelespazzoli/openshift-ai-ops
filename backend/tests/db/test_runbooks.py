@@ -28,7 +28,7 @@ def _make_chunk(
     )
 
 
-def _make_embedding(dim: int = 1536, val: float = 0.1) -> list[float]:
+def _make_embedding(dim: int = 1024, val: float = 0.1) -> list[float]:
     return [val] * dim
 
 

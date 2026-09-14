@@ -62,7 +62,7 @@ async def persist_case_record(
     Args:
         conn: asyncpg connection.
         case_record: The CaseRecord to persist.
-        embedding: Optional 1536-dimension embedding vector.
+        embedding: Optional embedding vector (must match the pgvector column dimension).
 
     Returns:
         The UUID of the persisted case record.

@@ -37,6 +37,7 @@ async def get_checkpointer() -> AsyncPostgresSaver:
         kwargs={"autocommit": True, "row_factory": dict_row},
         min_size=1,
         max_size=3,
+        open=False,
     )
     await _psycopg_pool.open()
 

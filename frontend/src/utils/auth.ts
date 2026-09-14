@@ -19,9 +19,15 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+export function shouldUseClientOAuth(): boolean {
+  return Boolean(import.meta.env.VITE_OAUTH_URL);
+}
+
 export function isAuthenticated(): boolean {
   if (import.meta.env.DEV && import.meta.env.VITE_DEV_TOKEN) return true;
-  return getStoredToken() !== null;
+  if (getStoredToken() !== null) return true;
+  // Cluster deploys sit behind oauth-proxy; the SPA has already passed OpenShift login.
+  return !shouldUseClientOAuth();
 }
 
 export function initiateOAuthFlow(): void {

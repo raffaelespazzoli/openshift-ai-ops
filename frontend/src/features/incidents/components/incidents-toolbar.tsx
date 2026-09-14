@@ -39,14 +39,14 @@ export function IncidentsToolbar({ filters, total, onFiltersChange }: IncidentsT
   const [isTimeRangeOpen, setIsTimeRangeOpen] = useState(false);
 
   const handleFiringSelect = useCallback(
-    (_event: React.MouseEvent, isSelected: boolean) => {
+    (_event: MouseEvent | React.KeyboardEvent | React.MouseEvent, isSelected: boolean) => {
       if (isSelected) onFiltersChange({ mode: 'firing', page: 1 });
     },
     [onFiltersChange],
   );
 
   const handleResolvedSelect = useCallback(
-    (_event: React.MouseEvent, isSelected: boolean) => {
+    (_event: MouseEvent | React.KeyboardEvent | React.MouseEvent, isSelected: boolean) => {
       if (isSelected) onFiltersChange({ mode: 'resolved', page: 1 });
     },
     [onFiltersChange],

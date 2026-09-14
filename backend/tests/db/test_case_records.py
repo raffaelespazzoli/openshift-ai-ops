@@ -37,7 +37,7 @@ class TestCaseRecordsTable:
         from pgvector.asyncpg import register_vector
         await register_vector(db_conn)
 
-        query_embedding = [0.1] * 1536
+        query_embedding = [0.1] * 1024
         results = await search_similar_cases(db_conn, query_embedding)
         assert results == []
 
@@ -47,8 +47,8 @@ class TestCaseRecordsTable:
         await register_vector(db_conn)
 
         # Insert two case records with different embeddings
-        embedding_close = [0.9] + [0.1] * 1535
-        embedding_far = [0.1] + [0.9] * 1535
+        embedding_close = [0.9] + [0.1] * 1023
+        embedding_far = [0.1] + [0.9] * 1023
 
         await db_conn.execute(
             """
@@ -69,7 +69,7 @@ class TestCaseRecordsTable:
             "node/not-ready", "success", 0.8, "4.14.5",
         )
 
-        query_embedding = [0.85] + [0.1] * 1535
+        query_embedding = [0.85] + [0.1] * 1023
         results = await search_similar_cases(
             db_conn, query_embedding, top_k=5, similarity_threshold=0.0
         )
@@ -84,7 +84,7 @@ class TestCaseRecordsTable:
         await register_vector(db_conn)
 
         # Insert a record with embedding far from query
-        embedding_far = [0.0] * 768 + [1.0] * 768
+        embedding_far = [0.0] * 512 + [1.0] * 512
         await db_conn.execute(
             """
             INSERT INTO case_records (id, alert_signature, alert_signature_embedding,
@@ -95,7 +95,7 @@ class TestCaseRecordsTable:
             "unknown/unclassified", "failure", 0.5, "4.14.5",
         )
 
-        query_embedding = [1.0] * 768 + [0.0] * 768
+        query_embedding = [1.0] * 512 + [0.0] * 512
         results = await search_similar_cases(
             db_conn, query_embedding, top_k=5, similarity_threshold=0.99
         )
@@ -115,7 +115,7 @@ class TestSearchFastPathCandidates:
         import json
 
         record_id = uuid.uuid4()
-        embedding = [0.9] + [0.1] * 1535
+        embedding = [0.9] + [0.1] * 1023
         diag = json.dumps({"root_cause_component": "node"})
         plan = json.dumps({"steps": [{"order": 1}]})
 
@@ -131,7 +131,7 @@ class TestSearchFastPathCandidates:
             True, diag, plan,
         )
 
-        query = [0.85] + [0.1] * 1535
+        query = [0.85] + [0.1] * 1023
         results = await search_fast_path_candidates(db_conn, query, threshold=0.0, top_k=3)
 
         assert len(results) >= 1
@@ -146,7 +146,7 @@ class TestSearchFastPathCandidates:
 
         import json
 
-        embedding = [0.9] + [0.1] * 1535
+        embedding = [0.9] + [0.1] * 1023
         await db_conn.execute(
             """
             INSERT INTO case_records (id, alert_signature, alert_signature_embedding,
@@ -159,7 +159,7 @@ class TestSearchFastPathCandidates:
             False, json.dumps({}), json.dumps({}),
         )
 
-        query = [0.85] + [0.1] * 1535
+        query = [0.85] + [0.1] * 1023
         results = await search_fast_path_candidates(db_conn, query, threshold=0.0, top_k=3)
 
         for r in results:
@@ -172,7 +172,7 @@ class TestSearchFastPathCandidates:
 
         import json
 
-        embedding = [0.9] + [0.1] * 1535
+        embedding = [0.9] + [0.1] * 1023
         await db_conn.execute(
             """
             INSERT INTO case_records (id, alert_signature, alert_signature_embedding,
@@ -185,7 +185,7 @@ class TestSearchFastPathCandidates:
             True, json.dumps({}), json.dumps({}),
         )
 
-        query = [0.85] + [0.1] * 1535
+        query = [0.85] + [0.1] * 1023
         results = await search_fast_path_candidates(db_conn, query, threshold=0.0, top_k=3)
 
         for r in results:
@@ -198,7 +198,7 @@ class TestSearchFastPathCandidates:
 
         import json
 
-        embedding_far = [0.0] * 768 + [1.0] * 768
+        embedding_far = [0.0] * 512 + [1.0] * 512
         await db_conn.execute(
             """
             INSERT INTO case_records (id, alert_signature, alert_signature_embedding,
@@ -211,7 +211,7 @@ class TestSearchFastPathCandidates:
             True, json.dumps({}), json.dumps({}),
         )
 
-        query = [1.0] * 768 + [0.0] * 768
+        query = [1.0] * 512 + [0.0] * 512
         results = await search_fast_path_candidates(db_conn, query, threshold=0.99, top_k=3)
 
         assert len(results) == 0

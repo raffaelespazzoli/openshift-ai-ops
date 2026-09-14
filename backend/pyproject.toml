@@ -26,11 +26,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+anthropic = ["langchain-anthropic>=0.3"]
+ollama = ["langchain-ollama>=0.3"]
+all-providers = [
+    "openshift-ai-ops[anthropic]",
+    "openshift-ai-ops[ollama]",
+]
 dev = [
     "pytest",
     "pytest-asyncio",
     "testcontainers[postgres]",
     "httpx",
+    "langchain-anthropic>=0.3",
+    "langchain-ollama>=0.3",
 ]
 
 [tool.hatch.build.targets.wheel]

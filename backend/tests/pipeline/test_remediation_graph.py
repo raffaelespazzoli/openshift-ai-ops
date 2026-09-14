@@ -743,7 +743,7 @@ class TestFreshnessGateNode:
 
         with (
             patch(
-                "src.pipeline.remediation_graph.get_pool",
+                "src.db.connection.get_pool",
                 new_callable=AsyncMock,
                 return_value=mock_pool,
             ),
@@ -770,7 +770,7 @@ class TestFreshnessGateNode:
 
         with (
             patch(
-                "src.pipeline.remediation_graph.get_pool",
+                "src.db.connection.get_pool",
                 new_callable=AsyncMock,
                 return_value=mock_pool,
             ),

@@ -114,12 +114,23 @@ CANNED_RESPONSES: dict[str, Any] = {
             {"kind": "Pod", "metadata": {"name": "test-pod-1", "namespace": "default"}},
         ]
     },
+    "resources_list": {
+        "items": [
+            {"kind": "Pod", "metadata": {"name": "test-pod-1", "namespace": "default"}},
+        ]
+    },
     "get_resource": {
         "kind": "Pod",
         "metadata": {"name": "test-pod-1", "namespace": "default"},
         "status": {"phase": "Running"},
     },
+    "resources_get": {
+        "kind": "Pod",
+        "metadata": {"name": "test-pod-1", "namespace": "default"},
+        "status": {"phase": "Running"},
+    },
     "get_logs": "2026-08-09T00:00:00Z ERROR: OOMKilled\n2026-08-09T00:00:01Z Container restart",
+    "pods_log": "2026-08-09T00:00:00Z ERROR: OOMKilled\n2026-08-09T00:00:01Z Container restart",
     "get_events": {
         "items": [
             {"type": "Warning", "reason": "MemoryPressure", "message": "Node under memory pressure"},

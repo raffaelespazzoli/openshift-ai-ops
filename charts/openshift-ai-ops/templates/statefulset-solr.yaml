@@ -18,6 +18,10 @@ spec:
         app.kubernetes.io/name: {{ .Chart.Name }}-solr
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      serviceAccountName: {{ .Release.Name }}-solr
+      # anyuid: tar unpack chmod/chown on the Solr data volume fails under restricted-v2.
+      securityContext:
+        runAsUser: 0
       containers:
         - name: solr
           image: "{{ .Values.solr.image.repository }}:{{ .Values.solr.image.tag }}"
@@ -43,6 +47,9 @@ spec:
         name: solr-data
       spec:
         accessModes: ["ReadWriteOnce"]
+        {{- with .Values.solr.storage.storageClass }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
         resources:
           requests:
             storage: {{ .Values.solr.storage.size | default "15Gi" }}

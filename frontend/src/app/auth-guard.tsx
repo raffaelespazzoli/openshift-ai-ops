@@ -6,7 +6,7 @@ import {
   Skeleton,
 } from '@patternfly/react-core';
 import { ExclamationCircleIcon } from '@patternfly/react-icons';
-import { isAuthenticated, initiateOAuthFlow } from '@utils/auth';
+import { isAuthenticated, initiateOAuthFlow, shouldUseClientOAuth } from '@utils/auth';
 
 const PUBLIC_PATHS = ['/oauth/callback'];
 
@@ -22,7 +22,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
   const isPublicPath = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
   useEffect(() => {
-    if (isPublicPath || isAuthenticated()) {
+    if (isPublicPath || isAuthenticated() || !shouldUseClientOAuth()) {
       setChecking(false);
       return;
     }

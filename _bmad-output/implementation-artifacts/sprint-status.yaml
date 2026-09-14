@@ -83,13 +83,14 @@ development_status:
   epic-4-retrospective: done
 
   # Epic 5: Operational Web UI & Approval Workflow
-  epic-5: done
+  epic-5: in-progress
   5-1-frontend-scaffolding-and-app-shell: done
   5-2-incidents-list-view: done
   5-3-incident-detail-view-and-pipeline-visualization: done
   5-4-approval-workflow-and-real-time-updates: done
   5-5-statistics-dashboard: done
   5-6-keyboard-shortcuts-and-accessibility: done
+  5-7-kind-based-local-e2e-lab: ready-for-dev
   epic-5-retrospective: optional
 
   # Epic 6: LLM Configuration & Optimization
@@ -186,9 +187,14 @@ action_items:
 
 # DEFERRED WORK:
 # ==============
-# E2E Integration Tests (post-Epic 3):
-#   Full pipeline tests with real MCP Servers and real LLM endpoints (nothing mocked).
-#   Validates plumbing: pods communicate, Streamable HTTP works, LLM responses flow
-#   through LangGraph checkpoints to DB to SSE to browser. Distinct from eval harness
-#   (Epic 7) which scores diagnostic accuracy. Not CI — requires a dedicated test
-#   cluster and LLM endpoint. Periodic/manual trigger, not per-PR.
+# E2E Lab Infrastructure (Story 5.7 — ready-for-dev):
+#   Kind-based local lab: kind cluster + kube-prometheus-stack + app Helm chart.
+#   Developer runs `make lab-up`, triggers real alerts, watches full pipeline flow.
+#   Addresses the "dedicated test cluster" blocker from the post-Epic 3 deferral.
+#
+# E2E Automated Test Harness (follow-up to 5.7 — backlog):
+#   pytest-based E2E assertions against the kind lab. Validates plumbing:
+#   pods communicate, Streamable HTTP works, LLM responses flow through
+#   LangGraph checkpoints to DB to SSE to browser. Potentially CI-able as
+#   a nightly job (deterministic plumbing tests with mock LLM container).
+#   Distinct from eval harness (Epic 7) which scores diagnostic accuracy.

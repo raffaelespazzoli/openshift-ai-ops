@@ -46,7 +46,7 @@ class TestPersistCaseRecord:
         conn = AsyncMock()
         conn.execute = AsyncMock()
         record = _make_case_record()
-        embedding = [0.1] * 1536
+        embedding = [0.1] * 1024
 
         result = await persist_case_record(conn, record, embedding)
 

@@ -853,6 +853,7 @@ dependencies = [
     { name = "psycopg-pool" },
     { name = "pydantic" },
     { name = "python-json-logger" },
+    { name = "pyyaml" },
     { name = "uvicorn" },
 ]
 
@@ -882,6 +883,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-asyncio", marker = "extra == 'dev'" },
     { name = "python-json-logger", specifier = ">=3.0" },
+    { name = "pyyaml" },
     { name = "testcontainers", extras = ["postgres"], marker = "extra == 'dev'" },
     { name = "uvicorn" },
 ]
